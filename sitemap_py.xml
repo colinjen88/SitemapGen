@@ -13,43 +13,35 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=260</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=101</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=270</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=247</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=288</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=282</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=420</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=37</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=458</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=418</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=514</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=444</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=624</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=460</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=625</loc>
-    <priority>0.85</priority>
-  </url>
-  <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=626</loc>
-    <priority>0.85</priority>
-  </url>
-  <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=630</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=628</loc>
     <priority>0.85</priority>
   </url>
   <url>
@@ -57,11 +49,7 @@
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=641</loc>
-    <priority>0.85</priority>
-  </url>
-  <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=652</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=640</loc>
     <priority>0.85</priority>
   </url>
   <url>
@@ -69,19 +57,15 @@
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=660</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=707</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=718</loc>
+    <loc>https://pm.shiny.com.tw/menu.php?cid=755</loc>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=725</loc>
-    <priority>0.85</priority>
-  </url>
-  <url>
-    <loc>https://pm.shiny.com.tw/menu.php?cid=743</loc>
-    <priority>0.85</priority>
+    <loc>https://pm.shiny.com.tw/shopping-explanation.php?paction=28</loc>
+    <priority>0.7</priority>
   </url>
 </urlset>

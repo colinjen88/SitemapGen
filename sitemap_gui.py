@@ -223,11 +223,34 @@ class SitemapApp:
         try:
             with open(file_path, "rb") as f:
                 data = pickle.load(f)
-            crawled = len(data.get("crawled_urls", set()))
-            valid = len(data.get("valid_sitemap_urls", set()))
-            to_crawl = len(data.get("urls_to_crawl", set()))
+            
+            # 實際載入數據到程式中
+            self.crawled_urls = set(data.get("crawled_urls", set()))
+            self.valid_sitemap_urls = set(data.get("valid_sitemap_urls", set()))
+            self.to_crawl = set(data.get("urls_to_crawl", set()))
+            self.rule1_count = data.get("rule1_count", 0)
+            self.rule2_count = data.get("rule2_count", 0)
+            self.rule3_count = data.get("rule3_count", 0)
+            
+            # 記錄本次 session 的起始數據
+            self.session_start_crawled = set(self.crawled_urls)
+            self.session_start_valid = set(self.valid_sitemap_urls)
+            
+            # 更新顯示
+            crawled = len(self.crawled_urls)
+            valid = len(self.valid_sitemap_urls)
+            to_crawl = len(self.to_crawl)
             self.label_stats.config(text=f"讀取進度檔：{os.path.basename(file_path)}\n已爬：{crawled}　有效：{valid}　待爬：{to_crawl}")
             self.progress["value"] = crawled
+            
+            # 更新分類統計
+            rule1 = len([url for url in self.crawled_urls if '/product-detail.php' in url])
+            rule2 = len([url for url in self.crawled_urls if '/menu.php' in url])
+            rule3 = crawled - rule1 - rule2
+            self.label_rule_count.config(text=f"本次 商品頁: {rule1}　清單頁: {rule2}　其他頁: {rule3} ｜ 累積 商品頁: {rule1}　清單頁: {rule2}　其他頁: {rule3}")
+            
+            messagebox.showinfo("進度讀取成功", f"已成功載入進度檔：{os.path.basename(file_path)}\n可繼續爬取剩餘的 {to_crawl} 個網址")
+            
         except Exception as e:
             messagebox.showerror("進度讀取失敗", f"讀取失敗：{e}")
 
@@ -289,7 +312,12 @@ class SitemapApp:
                 self.rule1_count = data.get("rule1_count", 0)
                 self.rule2_count = data.get("rule2_count", 0)
                 self.rule3_count = data.get("rule3_count", 0)
-                self.root.after(0, self.update_gui_periodically)
+                # 使用 thread-safe 的方式更新 GUI
+                try:
+                    self.root.after(0, self.update_gui_periodically)
+                except RuntimeError:
+                    # 如果主執行緒已經結束，忽略錯誤
+                    pass
 
             from src.sitemap_generator import run_crawler, create_sitemap
             num_threads = self.num_threads.get()
