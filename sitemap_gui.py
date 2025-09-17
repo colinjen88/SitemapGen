@@ -15,28 +15,46 @@ TOCRAWL_FILE = "urls_to_crawl.pkl"
 
 class SitemapApp:
     def autosave_progress(self):
-        print(f"[autosave_progress] called, is_running={self.is_running}")
-        print(f"[autosave_progress] crawled_urls={len(self.crawled_urls)}, valid_sitemap_urls={len(self.valid_sitemap_urls)}, to_crawl={len(self.to_crawl)}")
-        # 顯示本次 session 新增網址（與舊進度差集）
+        # 只在爬蟲運行時才執行自動儲存
+        if not self.is_running:
+            # 如果爬蟲未運行，延長檢查間隔到 30 秒
+            self.root.after(30000, self.autosave_progress)
+            return
+            
+        # 簡化日誌輸出，只在有變化時才輸出詳細資訊
         progress_file = "sitemap_progress.pkl"
+        has_changes = False
+        
         if os.path.exists(progress_file):
             try:
                 with open(progress_file, "rb") as f:
                     old = pickle.load(f)
                 old_crawled = set(old.get("crawled_urls", set()))
                 new_crawled = set(self.crawled_urls) - old_crawled
-                print(f"[autosave_progress] 新增 crawled_urls: {list(new_crawled)[:5]} ... 共 {len(new_crawled)}")
                 old_valid = set(old.get("valid_sitemap_urls", set()))
                 new_valid = set(self.valid_sitemap_urls) - old_valid
-                print(f"[autosave_progress] 新增 valid_sitemap_urls: {list(new_valid)[:5]} ... 共 {len(new_valid)}")
+                
+                # 只有當有新資料時才輸出詳細日誌
+                if new_crawled or new_valid:
+                    has_changes = True
+                    print(f"[autosave_progress] 新增 crawled_urls: {len(new_crawled)} 筆")
+                    print(f"[autosave_progress] 新增 valid_sitemap_urls: {len(new_valid)} 筆")
             except Exception:
                 pass
+        
         self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
-        print("[autosave_progress] 已儲存進度到 sitemap_progress.pkl")
-        self.root.after(5000, self.autosave_progress)  # 每 5 秒自動儲存一次
+        
+        if has_changes:
+            print("[autosave_progress] 已儲存進度到 sitemap_progress.pkl")
+        
+        # 爬蟲運行時每 5 秒檢查一次，未運行時每 30 秒檢查一次
+        interval = 5000 if self.is_running else 30000
+        self._autosave_id = self.root.after(interval, self.autosave_progress)
     def update_gui_periodically(self):
+        # 更新進度條
         self.progress.config(value=len(self.crawled_urls))
-        # 讀取累積進度檔唯一集合
+        
+        # 讀取累積進度檔
         progress_file = "sitemap_progress.pkl"
         accumulated_crawled = set()
         accumulated_valid = set()
@@ -48,19 +66,31 @@ class SitemapApp:
                     accumulated_valid = set(data.get("valid_sitemap_urls", set()))
             except Exception:
                 pass
-        # 累積分類
+        
+        # 計算統計數字
+        acc_total = len(accumulated_crawled)
+        acc_valid = len(accumulated_valid)
+        
+        # 計算本次新增的數據
+        session_new_crawled = self.crawled_urls - self.session_start_crawled
+        session_new_valid = self.valid_sitemap_urls - self.session_start_valid
+        session_new_total = len(session_new_crawled)
+        session_new_valid_count = len(session_new_valid)
+        cur_to_crawl = len(self.to_crawl)
+        
+        # 計算分類統計
         acc_rule1 = len([url for url in accumulated_crawled if '/product-detail.php' in url])
         acc_rule2 = len([url for url in accumulated_crawled if '/menu.php' in url])
-        acc_rule3 = len(accumulated_crawled) - acc_rule1 - acc_rule2
-        acc_total = len(accumulated_crawled)
-        # 本次分類
-        cur_rule1 = len([url for url in self.crawled_urls if '/product-detail.php' in url])
-        cur_rule2 = len([url for url in self.crawled_urls if '/menu.php' in url])
-        cur_rule3 = len(self.crawled_urls) - cur_rule1 - cur_rule2
-        cur_total = len(self.crawled_urls)
-        # 顯示
-        self.label_stats.config(text=f"本次已爬：{cur_total}　有效：{len(self.valid_sitemap_urls)}　待爬：{len(self.to_crawl)}\n累積已爬：{acc_total}　有效：{len(accumulated_valid)}")
-        self.label_rule_count.config(text=f"本次 商品頁: {cur_rule1}　清單頁: {cur_rule2}　其他頁: {cur_rule3} ｜ 累積 商品頁: {acc_rule1}　清單頁: {acc_rule2}　其他頁: {acc_rule3}")
+        acc_rule3 = acc_total - acc_rule1 - acc_rule2
+        
+        # 計算本次新增的分類統計
+        session_new_rule1 = len([url for url in session_new_crawled if '/product-detail.php' in url])
+        session_new_rule2 = len([url for url in session_new_crawled if '/menu.php' in url])
+        session_new_rule3 = session_new_total - session_new_rule1 - session_new_rule2
+        
+        # 更新顯示
+        self.label_stats.config(text=f"本次已爬：{session_new_total}　有效：{session_new_valid_count}　待爬：{cur_to_crawl}\n累積已爬：{acc_total}　有效：{acc_valid}")
+        self.label_rule_count.config(text=f"本次 商品頁: {session_new_rule1}　清單頁: {session_new_rule2}　其他頁: {session_new_rule3} ｜ 累積 商品頁: {acc_rule1}　清單頁: {acc_rule2}　其他頁: {acc_rule3}")
     def __init__(self, root):
         self.root = root
         self.root.title("Sitemap Generator GUI")
@@ -75,6 +105,11 @@ class SitemapApp:
         self.valid_sitemap_urls = set()
         self.to_crawl = set()
         self._gui_updater_id = None
+        self._autosave_id = None  # 用於追蹤自動儲存的定時器 ID
+        
+        # 本次 session 的起始數據（用於計算本次新增）
+        self.session_start_crawled = set()
+        self.session_start_valid = set()
 
         # 三種規則頁面計數
         self.rule1_count = 0
@@ -170,8 +205,8 @@ class SitemapApp:
         self.btn_load_progress = ttk.Button(frm_btn, text="讀取進度", command=self.load_progress, width=20)
         self.btn_load_progress.pack(side=tk.LEFT, padx=12)
 
-        # 啟動自動儲存進度（不依賴 self.is_running）
-        self.autosave_progress()
+        # 啟動自動儲存進度（只在爬蟲運行時才執行）
+        # self.autosave_progress()  # 改為在開始爬蟲時才啟動
 
     def load_progress(self):
         import glob
@@ -237,9 +272,14 @@ class SitemapApp:
                     self.rule1_count = data.get("rule1_count", 0)
                     self.rule2_count = data.get("rule2_count", 0)
                     self.rule3_count = data.get("rule3_count", 0)
+                    
+                    # 記錄本次 session 的起始數據
+                    self.session_start_crawled = set(self.crawled_urls)
+                    self.session_start_valid = set(self.valid_sitemap_urls)
                 except Exception:
                     pass
 
+            # 啟動自動儲存進度
             self.autosave_progress()
 
             def progress_callback(data):
@@ -258,7 +298,8 @@ class SitemapApp:
                 # 加入 is_running 狀態檢查
                 if not self.is_running:
                     return
-                run_crawler(start_url, progress_callback, num_threads)
+                # 傳遞 is_running 檢查函數
+                run_crawler(start_url, progress_callback, num_threads, lambda: self.is_running)
             t = threading.Thread(target=run_crawler_with_threads)
             self.threads.append(t)
             t.start()
@@ -293,6 +334,10 @@ class SitemapApp:
         if self._gui_updater_id:
             self.root.after_cancel(self._gui_updater_id)
             self._gui_updater_id = None
+        # 停止自動儲存
+        if self._autosave_id:
+            self.root.after_cancel(self._autosave_id)
+            self._autosave_id = None
         # 等待所有執行緒結束
         for t in getattr(self, 'threads', []):
             if t.is_alive():
@@ -420,29 +465,36 @@ class SitemapApp:
             "rule2_count": old.get("rule2_count", 0) + rule2_count,
             "rule3_count": old.get("rule3_count", 0) + rule3_count
         }
-        print(f"[save_progress] merged crawled_urls={len(merged_crawled)} (old={len(old_crawled)}, new={len(new_crawled)}), valid_sitemap_urls={len(merged_valid)} (old={len(old_valid)}, new={len(new_valid)}), urls_to_crawl={len(merged_to_crawl)} (old={len(old_to_crawl)}, new={len(new_to_crawl)})")
-        # 顯示本次 session 新增網址（與舊進度差集）
+        
+        # 計算新增的網址
         new_crawled_diff = new_crawled - old_crawled
-        if new_crawled_diff:
-            print(f"[save_progress] 新增 crawled_urls: {list(new_crawled_diff)[:5]} ... 共 {len(new_crawled_diff)}")
-        else:
-            print(f"[save_progress] 新增 crawled_urls: 無")
         new_valid_diff = new_valid - old_valid
-        if new_valid_diff:
-            print(f"[save_progress] 新增 valid_sitemap_urls: {list(new_valid_diff)[:5]} ... 共 {len(new_valid_diff)}")
-        else:
-            print(f"[save_progress] 新增 valid_sitemap_urls: 無")
+        
+        # 只在有實際變化時才輸出日誌
+        if new_crawled_diff or new_valid_diff:
+            print(f"[save_progress] 合併結果: 已爬={len(merged_crawled)} 有效={len(merged_valid)} 待爬={len(merged_to_crawl)}")
+            if new_crawled_diff:
+                print(f"[save_progress] 新增 crawled_urls: {len(new_crawled_diff)} 筆")
+            if new_valid_diff:
+                print(f"[save_progress] 新增 valid_sitemap_urls: {len(new_valid_diff)} 筆")
         try:
             with open(progress_file, "wb") as f:
                 pickle.dump(merged, f)
-            print(f"[save_progress] 寫入 {progress_file}，已爬:{len(merged['crawled_urls'])} 有效:{len(merged['valid_sitemap_urls'])} 待爬:{len(merged['urls_to_crawl'])}")
+            # 只在有變化時才輸出寫入成功訊息
+            if new_crawled_diff or new_valid_diff:
+                print(f"[save_progress] 寫入成功: 已爬:{len(merged['crawled_urls'])} 有效:{len(merged['valid_sitemap_urls'])} 待爬:{len(merged['urls_to_crawl'])}")
         except Exception as e:
             print(f"[save_progress] 寫入失敗: {e}")
 
     def add_error(self, url, error):
-        # 記錄錯誤
-        with open("error_log.txt", "a", encoding="utf-8") as f:
-            f.write(f"{url} - {error}\n")
+        # 記錄錯誤到日誌檔案
+        try:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open("error_log.txt", "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {url} - {error}\n")
+        except Exception as e:
+            print(f"無法寫入錯誤日誌: {e}")
 
     def update_sitemap(self, valid_sitemap_urls):
         # 更新 sitemap.xml 檔案
