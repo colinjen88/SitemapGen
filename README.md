@@ -1,7 +1,7 @@
-# Sitemap 生成器專案
+# Sitemap 生成器專案 (SEO工具)
 
 ## 專案簡介
-(這是寫給現在公司用的客製化專屬爬蟲工具)
+((這是寫給現在公司用的, 專屬客製化爬蟲工具))
 這是一個自動化網站爬蟲工具，專門用於生成符合 SEO 標準的 sitemap.xml 檔案。程式會自動爬取指定網站，依據預設規則篩選有效網址，並產生結構化的 sitemap 檔案。
 
 ## 主要功能
@@ -81,7 +81,7 @@ python scripts/convert_progress_to_sitemap.py
 
 1. **啟動程式**：執行 `python sitemap_gui.py`
 2. **設定參數**：
-   - 起始網址：預設為 `https://pm.shiny.com.tw/`
+   - 起始網址：預設為 `https://www..com.tw/`
    - 輸出檔名：預設為 `sitemap_py.xml`
    - 執行緒數量：可調整並發爬取數量
 3. **讀取進度**：點擊「讀取進度」按鈕載入之前的爬取進度
