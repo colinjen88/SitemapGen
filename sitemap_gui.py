@@ -153,19 +153,7 @@ class SitemapApp:
         self.label_rule_count = ttk.Label(frm_rule, text="商品頁: 0　清單頁: 0　其他頁: 0", font=("Segoe UI", 12), foreground="blue", width=60, anchor="w")
         self.label_rule_count.pack(side=tk.LEFT, padx=5)
 
-        # SEO 分析
-        frm_seo = ttk.Frame(root)
-        frm_seo.pack(pady=3)
-        ttk.Label(frm_seo, text="SEO：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_seo = ttk.Label(frm_seo, text="--", font=("Segoe UI", 11), foreground="green", width=60, anchor="w")
-        self.label_seo.pack(side=tk.LEFT, padx=5)
 
-        # 警示
-        frm_alert = ttk.Frame(root)
-        frm_alert.pack(pady=3)
-        ttk.Label(frm_alert, text="警示：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_alert = ttk.Label(frm_alert, text="--", font=("Segoe UI", 11), foreground="orange", width=60, anchor="w")
-        self.label_alert.pack(side=tk.LEFT, padx=5)
 
         # 分散式進度
         frm_dist = ttk.Frame(root)
@@ -535,4 +523,19 @@ class SitemapApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = SitemapApp(root)
+
+    def on_closing():
+        try:
+            app.is_running = False
+            # 嘗試終止所有執行緒
+            for t in getattr(app, 'threads', []):
+                if t.is_alive():
+                    t.join(timeout=2)
+        except Exception:
+            pass
+        root.destroy()
+        import sys
+        sys.exit(0)
+
+    root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
