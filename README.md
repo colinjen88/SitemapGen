@@ -26,7 +26,18 @@ sitemap_progress/
 ├── tools/
 │   ├── remove_page1.py         # 移除 page=1 參數的工具
 │   ├── sitemap_gui.spec        # PyInstaller 打包設定檔
-│   ├── SITEMAP_RULES.md        # 詳細規則說明
+│   ├── SITEMAP_RULES.md        # （已移至 Custom-made 資料夾）
+Custom-made/
+├── SITEMAP_RULES.md           # 規則說明與預設網址（第一行）
+├── URL_RULES.md               # 網址收錄規則細節
+## Sitemap 檔案說明
+
+專案可能會產生兩個 sitemap 檔案：
+
+- `sitemap_py.xml`：由本專案主程式產生，含有 priority 欄位，符合 SEO 標準，建議正式提交搜尋引擎。
+- `sitemap.xml`：可能由其他腳本或轉換工具產生，格式較簡單，僅含網址。
+
+兩者內容來源與產生方式可依需求調整，建議以 `sitemap_py.xml` 為主。
 │   ├── build/                  # 編譯輸出目錄
 │   └── dist/                   # 分發目錄
 ├── output/
@@ -78,6 +89,33 @@ python scripts/convert_progress_to_sitemap.py
 ## 詳細使用說明
 
 ### GUI 介面操作
+
+---
+
+## 補充說明
+
+### 專案目標與適用對象
+本工具適合網站管理者、SEO 工程師，或有大量自動化 sitemap 產生需求的團隊。可快速產生結構化 sitemap，提升搜尋引擎收錄效率。
+
+### 常見問題 Q&A
+
+**Q1: GUI 無法啟動怎麼辦？**
+A: 請確認已安裝 tkinter，並使用 Python 3.7 以上版本。
+
+**Q2: 進度檔損毀怎麼辦？**
+A: 建議先備份進度檔，刪除損毀檔案後重新開始，或聯絡維護者協助。
+
+**Q3: 產生的 sitemap 沒有預期網址？**
+A: 請檢查 Custom-made/URL_RULES.md，確認網址是否被排除規則過濾。
+
+### 進階設定
+
+- **自訂排除規則**：可編輯 `Custom-made/URL_RULES.md`，調整收錄與排除條件。
+- **priority 權重調整**：同樣於 URL_RULES.md 內調整各類型頁面權重。
+- **批次處理**：可多次執行、續爬，適合大型網站。
+
+### 聯絡方式
+如有問題請聯絡程式維護者，或於 GitHub 提出 issue。
 
 1. **啟動程式**：執行 `python sitemap_gui.py`
 2. **設定參數**：
