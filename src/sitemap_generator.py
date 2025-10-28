@@ -4,7 +4,7 @@ import pickle
 import csv
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qsl
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
@@ -203,10 +203,47 @@ def generate_xml_file(urls):
         urls -= homepage_variants
         urls.add(homepage)
 
-    exclude_patterns = ['/login.php', '/member.php', '/register.php']
-    urls = {u for u in urls if not any(p in u for p in exclude_patterns)}
+    # 明確排除頁面（根據 SEO 規則）
+    explicit_exclude = [
+        '/recover_product_detail.php',
+        '/keeping.php',
+        '/logout.php',
+        '/login.php',
+        '/register.php',
+        '/member.php',
+        '/order_query.php',
+        '/order_detail.php',
+        '/money_transfer.php',
+        '/vip_contract.php',
+        '/member_contract.php',
+        '/wholesaler_contract.php',
+    ]
+    urls = {u for u in urls if not any(p in u for p in explicit_exclude)}
 
     urls = apply_custom_rules(urls)
+
+    # 讀取可選的 GUI 設定
+    exclude_nonstandard_index = True
+    enable_abnormal_filter = True
+    try:
+        import json
+        if os.path.exists('config.json'):
+            with open('config.json', 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+                exclude_nonstandard_index = cfg.get('exclude_nonstandard_index_path', True)
+                enable_abnormal_filter = cfg.get('enable_abnormal_query_filter', True)
+                # 合併 GUI 中自訂的 excluded_paths
+                extra_excluded = cfg.get('excluded_paths', []) or []
+                if extra_excluded:
+                    urls = {u for u in urls if not any(p in u for p in extra_excluded)}
+    except Exception:
+        pass
+
+    # 依 SEO 規則進一步過濾：/index.php/ 與異常參數（可透過 GUI 開關）
+    if exclude_nonstandard_index:
+        urls = {u for u in urls if not is_nonstandard_index_path(u)}
+    if enable_abnormal_filter:
+        urls = {u for u in urls if not has_abnormal_query(u)}
 
     xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -313,6 +350,77 @@ def remove_menu_page1(urls):
             continue
         result.add(url)
     return result
+
+def is_nonstandard_index_path(url: str) -> bool:
+    """/index.php/ 非標準路徑需排除"""
+    return '/index.php/' in url
+
+def has_abnormal_query(url: str) -> bool:
+    """依 SEO 文件定義偵測異常參數，任一條件成立即視為異常。"""
+    parsed = urlparse(url)
+    if not parsed.query:
+        return False
+
+    # 拆解參數（允許重複鍵）
+    params = parse_qsl(parsed.query, keep_blank_values=True)
+    name_to_values = {}
+    for k, v in params:
+        name_to_values.setdefault(k, []).append(v)
+
+    # 規則 1: page 參數重複
+    if 'page' in name_to_values and len(name_to_values['page']) > 1:
+        return True
+
+    # 規則 4: 參數名稱異常
+    dangerous_substrings = ['script', 'http', '<', '>', "'", '"', '{', '}', '[', ']']
+    for name in name_to_values.keys():
+        if len(name) > 30:
+            return True
+        lname = name.lower()
+        if any(s in lname for s in dangerous_substrings):
+            return True
+
+    # 規則 2/3: 指定名稱且值異常；值異常的通用檢查也對所有參數套用
+    special_names = {
+        'type','mode','action','keywords','sa','sntz','usg',
+        'ovraw','ovkey','ovmtc','ovadid','ovkwid','ovcampgid','ovadgrpid'
+    }
+
+    def value_is_abnormal(value: str) -> bool:
+        if value is None:
+            return True
+        v = value
+        if v == '':
+            return True
+        if '///' in v or 'http://' in v or 'https://' in v:
+            return True
+        # 全部為非英數
+        import re
+        if not re.search(r'[A-Za-z0-9]', v):
+            return True
+        # 連續重複同一字元4次以上
+        if re.search(r'(.)\1{3,}', v):
+            return True
+        # 長度 > 10 且無母音（疑似亂碼）
+        if len(v) > 10 and not re.search(r'[AEIOUaeiou]', v):
+            return True
+        # 長度 > 50
+        if len(v) > 50:
+            return True
+        return False
+
+    for name, values in name_to_values.items():
+        # 指定名稱需要值正常，否則異常
+        if name.lower() in special_names:
+            for val in values:
+                if value_is_abnormal(val):
+                    return True
+        # 對所有參數值做通用異常檢查
+        for val in values:
+            if value_is_abnormal(val):
+                return True
+
+    return False
 
 def export_sitemap_with_priority_from_progress(progress_pkl_path, output_dir="."):
     import pickle

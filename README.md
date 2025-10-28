@@ -1,3 +1,9 @@
+# 最新專案狀態（2025/10/28）
+
+- 已完成 sitemap 產生與主程式（sitemap_gui.py）測試，運作正常。
+- 專案目前未包含自動化測試檔案（如 test_*.py 或 *_test.py）。
+- 已新增 `.gitattributes`，強制 Python 與 Markdown 檔案使用 LF 換行格式，避免 Git 換行警告。
+
 # Sitemap 生成器專案 (SEO工具)
 
 ## 專案簡介

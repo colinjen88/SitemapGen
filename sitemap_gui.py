@@ -393,20 +393,44 @@ class SitemapApp:
         text_exclude.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=text_exclude.yview)
         
-        # 載入現有排除路徑
+        # 載入現有排除路徑（包含 SEO 文件列出的敏感頁面）
         excluded_paths = config.get("excluded_paths", [
             "/login.php",
             "/member.php",
             "/register.php",
-            "/admin.php"
+            "/admin.php",
+            "/recover_product_detail.php",
+            "/keeping.php",
+            "/logout.php",
+            "/order_query.php",
+            "/order_detail.php",
+            "/money_transfer.php",
+            "/vip_contract.php",
+            "/member_contract.php",
+            "/wholesaler_contract.php",
         ])
         text_exclude.insert("1.0", "\n".join(excluded_paths))
         
         config["_text_exclude"] = text_exclude
         
+        # 勾選設定：排除非標準 index.php 路徑、啟用異常參數過濾
+        chk_frame = ttk.Frame(parent)
+        chk_frame.grid(row=2, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(5, 0))
+
+        var_excl_index = tk.BooleanVar(value=bool(config.get("exclude_nonstandard_index_path", True)))
+        var_abnormal = tk.BooleanVar(value=bool(config.get("enable_abnormal_query_filter", True)))
+
+        cb1 = ttk.Checkbutton(chk_frame, text="排除非標準 index.php 路徑（/index.php/）", variable=var_excl_index)
+        cb2 = ttk.Checkbutton(chk_frame, text="啟用異常參數過濾", variable=var_abnormal)
+        cb1.pack(anchor=tk.W)
+        cb2.pack(anchor=tk.W)
+
+        config["_var_excl_index"] = var_excl_index
+        config["_var_abnormal"] = var_abnormal
+
         # 提示說明
         ttk.Label(parent, text="提示：輸入要排除的路徑，每行一個。例如：/login.php", 
-                 font=("Segoe UI", 9), foreground="gray").grid(row=2, column=0, columnspan=2, padx=10, pady=5)
+                 font=("Segoe UI", 9), foreground="gray").grid(row=3, column=0, columnspan=2, padx=10, pady=5)
     
     def _create_custom_rules(self, parent, config):
         """創建自訂規則頁面"""
@@ -576,7 +600,9 @@ class SitemapApp:
                 "autosave_interval": int(config["_entry_autosave"].get()),
                 "user_agent": config["_text_ua"].get("1.0", tk.END).strip(),
                 "priorities": {},
-                "excluded_paths": [line.strip() for line in config["_text_exclude"].get("1.0", tk.END).split("\n") if line.strip()]
+                "excluded_paths": [line.strip() for line in config["_text_exclude"].get("1.0", tk.END).split("\n") if line.strip()],
+                "exclude_nonstandard_index_path": bool(config.get("_var_excl_index").get()) if config.get("_var_excl_index") is not None else True,
+                "enable_abnormal_query_filter": bool(config.get("_var_abnormal").get()) if config.get("_var_abnormal") is not None else True,
             }
             
             # 讀取權重設定
@@ -776,6 +802,11 @@ class SitemapApp:
             self.progress["value"] = 100
             self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
             self.generate_xml_file(list(self.valid_sitemap_urls))
+            # 顯示 sitemap.xml 連結
+            try:
+                self.show_sitemap_link()
+            except Exception:
+                pass
 
         def wait_threads():
             t.join() # 等待爬蟲執行緒結束
@@ -854,6 +885,15 @@ class SitemapApp:
             if t.is_alive():
                 t.join(timeout=2)
         self.threads = []
+        # 如果已有有效網址，產生 sitemap 並顯示連結
+        try:
+            if self.valid_sitemap_urls:
+                import os
+                if not os.path.exists("sitemap.xml"):
+                    self.generate_xml_file(list(self.valid_sitemap_urls))
+                self.show_sitemap_link()
+        except Exception:
+            pass
 
     def crawl_url(self, url, crawled_urls, valid_sitemap_urls, to_crawl, start_url):
         from urllib.parse import urljoin
@@ -991,8 +1031,17 @@ class SitemapApp:
         try:
             self.generate_xml_file(list(valid_sitemap_urls))
             self.label_sitemap.config(text="sitemap.xml 更新成功", foreground="green")
+            # 同步顯示可點連結
+            self.show_sitemap_link()
         except Exception as e:
             self.label_sitemap.config(text=f"sitemap.xml 更新失敗：{e}", foreground="red")
+
+    def show_sitemap_link(self):
+        import os
+        path = os.path.abspath("sitemap.xml")
+        if os.path.exists(path):
+            # 顯示可點的連結提示文字
+            self.label_sitemap.config(text=f"開啟 sitemap.xml", foreground="blue")
 
 if __name__ == "__main__":
     root = tk.Tk()
