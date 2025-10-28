@@ -1,12 +1,13 @@
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
-from sitemap_generator import create_sitemap
+src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+from src.sitemap_generator import generate_xml_file, run_crawler
 import threading
 import time
 from tkinter import ttk, messagebox
 import tkinter as tk
-import os
 import pickle
 
 CRAWLED_FILE = "crawled_urls.pkl"
@@ -14,17 +15,613 @@ VALID_FILE = "valid_sitemap_urls.pkl"
 TOCRAWL_FILE = "urls_to_crawl.pkl"
 
 class SitemapApp:
+    def __init__(self, root):
+        self.generate_xml_file = generate_xml_file
+        self.run_crawler = run_crawler
+
+        self.root = root
+        self.root.title("Sitemap Generator GUI")
+        self.root.geometry("700x600")
+        self.is_running = False
+        self.threads = []
+        self.num_threads = tk.IntVar(value=3)
+        self.crawled_urls = set()
+        self.valid_sitemap_urls = set()
+        self.to_crawl = set()
+        self.rule1_count = 0
+        self.rule2_count = 0
+        self.rule3_count = 0
+        self.session_start_crawled = set()
+        self.session_start_valid = set()
+        self.session_start_rule1 = 0
+        self.session_start_rule2 = 0
+        self.session_start_rule3 = 0
+        self._gui_updater_id = None
+        self._autosave_id = None
+        # 標題
+        title = ttk.Label(self.root, text="Sitemap Generator", font=("Segoe UI", 20, "bold"))
+        title.pack(pady=(18, 8))
+        # 起始網址
+        frm_url = ttk.Frame(self.root)
+        frm_url.pack(pady=5)
+        ttk.Label(frm_url, text="起始網址：", font=("Segoe UI", 12)).pack(side=tk.LEFT)
+        self.entry_url = ttk.Entry(frm_url, width=52, font=("Segoe UI", 12))
+        self.entry_url.pack(side=tk.LEFT, padx=5)
+        self.entry_url.insert(0, "https://pm.shiny.com.tw/")
+        # 執行緒數量選擇
+        frm_threads = ttk.Frame(self.root)
+        frm_threads.pack(pady=5)
+        ttk.Label(frm_threads, text="執行緒數量：", font=("Segoe UI", 12)).pack(side=tk.LEFT)
+        self.combo_threads = ttk.Combobox(frm_threads, textvariable=self.num_threads, values=[1,2,3,4,5,6,7,8,9,10], width=5, state="readonly")
+        self.combo_threads.pack(side=tk.LEFT, padx=5)
+        # 進度條
+        self.progress = ttk.Progressbar(self.root, orient="horizontal", length=540, mode="determinate")
+        self.progress.pack(pady=6)
+        # 狀態顯示
+        self.label_status = ttk.Label(self.root, text="狀態：等待啟動", font=("Segoe UI", 12), foreground="black")
+        self.label_status.pack(pady=6)
+        # 進度統計
+        self.label_stats = ttk.Label(self.root, text="本次已爬：0　有效：0　待爬：0\n累積已爬：0　累積有效：0", font=("Segoe UI", 13, "bold"), background="#f8f8f8", foreground="#2a4d8f")
+        self.label_stats.pack(pady=8)
+        # 三種規則頁面數量顯示
+        frm_rule = ttk.Frame(self.root)
+        frm_rule.pack(pady=3)
+        self.label_rule_count = ttk.Label(frm_rule, text="商品頁: 0　清單頁: 0　其他頁: 0", font=("Segoe UI", 12), foreground="blue", width=60, anchor="w")
+        self.label_rule_count.pack(side=tk.LEFT, padx=5)
+        # 分散式進度
+        frm_dist = ttk.Frame(self.root)
+        frm_dist.pack(pady=3)
+        ttk.Label(frm_dist, text="分散式進度：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        self.label_dist = ttk.Label(frm_dist, text="--", font=("Segoe UI", 11), foreground="purple", width=60, anchor="w")
+        self.label_dist.pack(side=tk.LEFT, padx=5)
+        # robots.txt 狀態
+        frm_robots = ttk.Frame(self.root)
+        frm_robots.pack(pady=3)
+        ttk.Label(frm_robots, text="robots.txt 狀態：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        self.label_robots = ttk.Label(frm_robots, text="--", font=("Segoe UI", 11), foreground="blue", width=60, anchor="w")
+        self.label_robots.pack(side=tk.LEFT, padx=5)
+        # sitemap.xml 狀態
+        frm_sitemap = ttk.Frame(self.root)
+        frm_sitemap.pack(pady=3)
+        ttk.Label(frm_sitemap, text="sitemap.xml 狀態：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        self.label_sitemap = ttk.Label(frm_sitemap, text="--", font=("Segoe UI", 11), foreground="blue", width=60, anchor="w", cursor="hand2")
+        self.label_sitemap.pack(side=tk.LEFT, padx=5)
+        self.label_sitemap.bind("<Button-1>", self.open_sitemap_file)
+        
+        # 錯誤訊息
+        frm_error = ttk.Frame(self.root)
+        frm_error.pack(pady=3)
+        ttk.Label(frm_error, text="錯誤：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        self.label_error = ttk.Label(frm_error, text="--", font=("Segoe UI", 11), foreground="red", width=60, anchor="w")
+        self.label_error.pack(side=tk.LEFT, padx=5)
+        # 按鈕區
+        frm_btn = ttk.Frame(self.root)
+        frm_btn.pack(pady=(22, 10))
+        self.btn_start = ttk.Button(frm_btn, text="啟動爬蟲", command=self.start_crawler, width=20)
+        self.btn_start.pack(side=tk.LEFT, padx=12, pady=10, ipady=10)
+        self.btn_stop = ttk.Button(frm_btn, text="停止爬蟲", command=self.stop_crawler, state=tk.DISABLED, width=20)
+        self.btn_stop.pack(side=tk.LEFT, padx=12, pady=10, ipady=10)
+        self.btn_load_progress = ttk.Button(frm_btn, text="讀取進度", command=self.load_progress, width=20)
+        self.btn_load_progress.pack(side=tk.LEFT, padx=12, pady=10, ipady=10)
+        
+        # 客製化設定按鈕（移到下方）
+        btn_custom = ttk.Button(self.root, text="客製化設定", command=self.open_custom_settings)
+        btn_custom.pack(pady=10)
+
+    def open_sitemap_file(self, event=None):
+        import os
+        import webbrowser
+        sitemap_path = os.path.abspath("sitemap.xml")
+        if os.path.exists(sitemap_path):
+            webbrowser.open(f"file://{sitemap_path}")
+        else:
+            from tkinter import messagebox
+            messagebox.showinfo("找不到檔案", "sitemap.xml 尚未產生")
+    
+    def open_custom_settings(self):
+        """開啟客製化設定視窗"""
+        # 創建新視窗
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("客製化設定")
+        settings_window.geometry("800x700")
+        settings_window.transient(self.root)
+        settings_window.grab_set()
+        
+        # 讀取當前設定
+        current_config = self._load_config()
+        
+        # 創建 Notebook (分頁標籤)
+        notebook = ttk.Notebook(settings_window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # === 基本設定頁面 ===
+        frame_basic = ttk.Frame(notebook)
+        notebook.add(frame_basic, text="基本設定")
+        self._create_basic_settings(frame_basic, current_config)
+        
+        # === 爬蟲設定頁面 ===
+        frame_crawler = ttk.Frame(notebook)
+        notebook.add(frame_crawler, text="爬蟲設定")
+        self._create_crawler_settings(frame_crawler, current_config)
+        
+        # === 權重設定頁面 ===
+        frame_priority = ttk.Frame(notebook)
+        notebook.add(frame_priority, text="權重設定")
+        self._create_priority_settings(frame_priority, current_config)
+        
+        # === 排除規則頁面 ===
+        frame_exclude = ttk.Frame(notebook)
+        notebook.add(frame_exclude, text="排除規則")
+        self._create_exclude_settings(frame_exclude, current_config)
+        
+        # === 自訂規則頁面 ===
+        frame_custom = ttk.Frame(notebook)
+        notebook.add(frame_custom, text="自訂規則")
+        self._create_custom_rules(frame_custom, current_config)
+        
+        # 按鈕區域
+        btn_frame = ttk.Frame(settings_window)
+        btn_frame.pack(pady=10)
+        
+        btn_save = ttk.Button(btn_frame, text="儲存設定", 
+                             command=lambda: self._save_settings(settings_window, current_config))
+        btn_save.pack(side=tk.LEFT, padx=5)
+        
+        btn_cancel = ttk.Button(btn_frame, text="取消", command=settings_window.destroy)
+        btn_cancel.pack(side=tk.LEFT, padx=5)
+        
+        btn_reset = ttk.Button(btn_frame, text="還原預設", 
+                              command=lambda: self._reset_to_defaults(settings_window, current_config, notebook))
+        btn_reset.pack(side=tk.LEFT, padx=5)
+    
+    def _create_basic_settings(self, parent, config):
+        """創建基本設定頁面"""
+        # 起始網址
+        ttk.Label(parent, text="起始網址：", font=("Segoe UI", 11)).grid(row=0, column=0, sticky=tk.W, padx=10, pady=10)
+        entry_start_url = ttk.Entry(parent, width=50, font=("Segoe UI", 10))
+        entry_start_url.grid(row=0, column=1, padx=10, pady=10)
+        entry_start_url.insert(0, config.get("start_url", "https://pm.shiny.com.tw/"))
+        
+        # 執行緒數量
+        ttk.Label(parent, text="執行緒數量：", font=("Segoe UI", 11)).grid(row=1, column=0, sticky=tk.W, padx=10, pady=10)
+        entry_threads = ttk.Entry(parent, width=50, font=("Segoe UI", 10))
+        entry_threads.grid(row=1, column=1, padx=10, pady=10)
+        entry_threads.insert(0, str(config.get("max_workers", 3)))
+        
+        # 請求延遲（秒）
+        ttk.Label(parent, text="請求延遲（秒）：", font=("Segoe UI", 11)).grid(row=2, column=0, sticky=tk.W, padx=10, pady=10)
+        entry_delay = ttk.Entry(parent, width=50, font=("Segoe UI", 10))
+        entry_delay.grid(row=2, column=1, padx=10, pady=10)
+        entry_delay.insert(0, str(config.get("request_delay", 0.1)))
+        
+        # 最大深度
+        ttk.Label(parent, text="最大深度：", font=("Segoe UI", 11)).grid(row=3, column=0, sticky=tk.W, padx=10, pady=10)
+        entry_depth = ttk.Entry(parent, width=50, font=("Segoe UI", 10))
+        entry_depth.grid(row=3, column=1, padx=10, pady=10)
+        entry_depth.insert(0, str(config.get("max_depth", 10)))
+        
+        # 保存到配置字典
+        config["_entry_start_url"] = entry_start_url
+        config["_entry_threads"] = entry_threads
+        config["_entry_delay"] = entry_delay
+        config["_entry_depth"] = entry_depth
+    
+    def _create_crawler_settings(self, parent, config):
+        """創建爬蟲設定頁面"""
+        # 設定 User-Agent
+        ttk.Label(parent, text="User-Agent：", font=("Segoe UI", 11)).grid(row=0, column=0, sticky=tk.W+tk.N, padx=10, pady=10)
+        text_ua = tk.Text(parent, width=50, height=3, font=("Consolas", 9), wrap=tk.WORD)
+        text_ua.grid(row=0, column=1, padx=10, pady=10)
+        default_ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        text_ua.insert("1.0", config.get("user_agent", default_ua))
+        
+        # 超時設定（秒）
+        ttk.Label(parent, text="請求超時（秒）：", font=("Segoe UI", 11)).grid(row=1, column=0, sticky=tk.W, padx=10, pady=10)
+        entry_timeout = ttk.Entry(parent, width=50, font=("Segoe UI", 10))
+        entry_timeout.grid(row=1, column=1, padx=10, pady=10)
+        entry_timeout.insert(0, str(config.get("timeout", 10)))
+        
+        # 自動保存間隔（秒）
+        ttk.Label(parent, text="自動保存間隔（秒）：", font=("Segoe UI", 11)).grid(row=2, column=0, sticky=tk.W, padx=10, pady=10)
+        entry_autosave = ttk.Entry(parent, width=50, font=("Segoe UI", 10))
+        entry_autosave.grid(row=2, column=1, padx=10, pady=10)
+        entry_autosave.insert(0, str(config.get("autosave_interval", 5)))
+        
+        # 保存到配置字典
+        config["_text_ua"] = text_ua
+        config["_entry_timeout"] = entry_timeout
+        config["_entry_autosave"] = entry_autosave
+    
+    def _create_priority_settings(self, parent, config):
+        """創建權重設定頁面"""
+        priorities = config.get("priorities", {})
+        
+        # 創建滾動區域
+        canvas = tk.Canvas(parent)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # 預設權重項目
+        default_priorities = config.get("_default_priorities", [
+            ("首頁", "homepage", "1.0"),
+            ("商品頁 (product-detail.php)", "product_detail", "0.7"),
+            ("清單頁無參數 (menu.php)", "menu_no_params", "0.9"),
+            ("清單頁有參數 (menu.php?)", "menu_with_params", "0.85"),
+            ("清單頁有分頁 (page=)", "menu_with_page", "0.8"),
+            ("新聞頁 (news.php)", "news", "0.9"),
+            ("關於頁 (about.php)", "about", "0.8"),
+            ("購物說明 (shopping_explanation)", "shopping_explanation", "0.8"),
+            ("其他頁面", "default", "0.7")
+        ])
+        
+        # 合併預設和自訂項目
+        all_priorities = []
+        for label, key, default in default_priorities:
+            all_priorities.append((label, key, default, True))
+        
+        # 添加自訂項目
+        custom_priorities = priorities.copy()
+        for key in default_priorities:
+            custom_priorities.pop(key[1], None)
+        
+        for key, value in custom_priorities.items():
+            if key not in [x[1] for x in default_priorities]:
+                all_priorities.append((key.replace("_", " ").title(), key, str(value), False))
+        
+        priority_entries = {}
+        priority_rows = {}  # 儲存每一行的 frame
+        
+        # 創建每一行的設定
+        for idx, (label, key, default, is_default) in enumerate(all_priorities):
+            row_frame = ttk.Frame(scrollable_frame)
+            row_frame.grid(row=idx, column=0, sticky=tk.W+tk.E, padx=5, pady=2)
+            
+            # 標籤
+            label_widget = ttk.Label(row_frame, text=f"{label}：", font=("Segoe UI", 10), width=30)
+            label_widget.grid(row=0, column=0, sticky=tk.W)
+            
+            # 輸入框
+            entry = ttk.Entry(row_frame, width=15, font=("Segoe UI", 10))
+            entry.grid(row=0, column=1, padx=5)
+            value = str(priorities.get(key, default))
+            entry.insert(0, value)
+            priority_entries[key] = entry
+            
+            # 刪除按鈕（只有非預設項目才顯示）
+            if not is_default:
+                btn_delete = ttk.Button(row_frame, text="刪除", width=8,
+                                       command=lambda k=key: self._delete_priority_item(k, priority_entries, priority_rows, scrollable_frame))
+                btn_delete.grid(row=0, column=2, padx=5)
+            
+            priority_rows[key] = row_frame
+        
+        # 新增項目按鈕
+        new_item_frame = ttk.Frame(scrollable_frame)
+        new_item_frame.grid(row=len(all_priorities), column=0, sticky=tk.W+tk.E, padx=5, pady=10)
+        
+        ttk.Label(new_item_frame, text="新增項目名稱：", font=("Segoe UI", 10)).grid(row=0, column=0, padx=5)
+        entry_new_name = ttk.Entry(new_item_frame, width=20, font=("Segoe UI", 10))
+        entry_new_name.grid(row=0, column=1, padx=5)
+        
+        ttk.Label(new_item_frame, text="權重值：", font=("Segoe UI", 10)).grid(row=0, column=2, padx=5)
+        entry_new_value = ttk.Entry(new_item_frame, width=10, font=("Segoe UI", 10))
+        entry_new_value.grid(row=0, column=3, padx=5)
+        entry_new_value.insert(0, "0.7")
+        
+        btn_add = ttk.Button(new_item_frame, text="新增項目",
+                            command=lambda: self._add_priority_item(entry_new_name.get(), entry_new_value.get(), 
+                                                                    priority_entries, priority_rows, scrollable_frame))
+        btn_add.grid(row=0, column=4, padx=5)
+        
+        config["_priority_entries"] = priority_entries
+        config["_priority_rows"] = priority_rows
+        config["_scrollable_frame"] = scrollable_frame
+    
+    def _add_priority_item(self, name, value, priority_entries, priority_rows, scrollable_frame):
+        """新增權重項目"""
+        if not name or not name.strip():
+            messagebox.showwarning("警告", "請輸入項目名稱！")
+            return
+        
+        try:
+            float(value)
+        except ValueError:
+            messagebox.showwarning("警告", "權重值必須是數字！")
+            return
+        
+        key = name.lower().replace(" ", "_")
+        if key in priority_entries:
+            messagebox.showinfo("提示", "該項目已存在！")
+            return
+        
+        row_idx = len(priority_entries)
+        row_frame = ttk.Frame(scrollable_frame)
+        row_frame.grid(row=row_idx, column=0, sticky=tk.W+tk.E, padx=5, pady=2)
+        
+        label_widget = ttk.Label(row_frame, text=f"{name}：", font=("Segoe UI", 10), width=30)
+        label_widget.grid(row=0, column=0, sticky=tk.W)
+        
+        entry = ttk.Entry(row_frame, width=15, font=("Segoe UI", 10))
+        entry.grid(row=0, column=1, padx=5)
+        entry.insert(0, value)
+        priority_entries[key] = entry
+        
+        btn_delete = ttk.Button(row_frame, text="刪除", width=8,
+                               command=lambda k=key: self._delete_priority_item(k, priority_entries, priority_rows, scrollable_frame))
+        btn_delete.grid(row=0, column=2, padx=5)
+        
+        priority_rows[key] = row_frame
+        
+        messagebox.showinfo("成功", f"已新增項目：{name}")
+    
+    def _delete_priority_item(self, key, priority_entries, priority_rows, scrollable_frame):
+        """刪除權重項目"""
+        if key in ["homepage", "default"]:
+            messagebox.showwarning("警告", "不能刪除預設項目！")
+            return
+        
+        if key in priority_rows:
+            priority_rows[key].destroy()
+            del priority_rows[key]
+            del priority_entries[key]
+            messagebox.showinfo("成功", "已刪除項目")
+    
+    def _create_exclude_settings(self, parent, config):
+        """創建排除規則頁面"""
+        ttk.Label(parent, text="排除路徑（每行一個）：", font=("Segoe UI", 11)).grid(row=0, column=0, sticky=tk.W+tk.N, padx=10, pady=10)
+        
+        # 創建多行文字框和滾動條
+        frame = ttk.Frame(parent)
+        frame.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky=tk.W+tk.E)
+        
+        scrollbar = ttk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        text_exclude = tk.Text(frame, width=60, height=10, font=("Consolas", 10), 
+                               wrap=tk.WORD, yscrollcommand=scrollbar.set)
+        text_exclude.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=text_exclude.yview)
+        
+        # 載入現有排除路徑
+        excluded_paths = config.get("excluded_paths", [
+            "/login.php",
+            "/member.php",
+            "/register.php",
+            "/admin.php"
+        ])
+        text_exclude.insert("1.0", "\n".join(excluded_paths))
+        
+        config["_text_exclude"] = text_exclude
+        
+        # 提示說明
+        ttk.Label(parent, text="提示：輸入要排除的路徑，每行一個。例如：/login.php", 
+                 font=("Segoe UI", 9), foreground="gray").grid(row=2, column=0, columnspan=2, padx=10, pady=5)
+    
+    def _create_custom_rules(self, parent, config):
+        """創建自訂規則頁面"""
+        # 說明文字
+        ttk.Label(parent, text="自訂 URL 過濾規則（使用正則表達式）", font=("Segoe UI", 11, "bold")).pack(pady=10)
+        ttk.Label(parent, text="可設定多組規則，匹配的 URL 會被排除或包含", font=("Segoe UI", 9), foreground="gray").pack()
+        
+        # 滾動區域
+        canvas = tk.Canvas(parent)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True, pady=10)
+        scrollbar.pack(side="right", fill="y")
+        
+        # 載入現有規則
+        custom_rules = config.get("custom_rules", [
+            {
+                "name": "排除 menu.php 的 page=1",
+                "pattern": r"[\?&]page=1($|&)",
+                "url_contains": "/menu.php",
+                "action": "exclude"
+            }
+        ])
+        
+        rule_frames = []
+        for idx, rule in enumerate(custom_rules):
+            frame = self._create_single_custom_rule(scrollable_frame, rule, idx)
+            rule_frames.append(frame)
+        
+        config["_custom_rule_frames"] = rule_frames
+        config["_scrollable_frame_rules"] = scrollable_frame
+        
+        # 新增規則按鈕
+        btn_frame = ttk.Frame(scrollable_frame)
+        btn_frame.pack(pady=10)
+        
+        btn_add = ttk.Button(btn_frame, text="+ 新增規則",
+                           command=lambda: self._add_custom_rule(config, rule_frames))
+        btn_add.pack()
+    
+    def _create_single_custom_rule(self, parent, rule, idx):
+        """創建單一自訂規則行"""
+        frame = ttk.LabelFrame(parent, text=f"規則 #{idx + 1}")
+        frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 規則名稱
+        ttk.Label(frame, text="規則名稱：").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        entry_name = ttk.Entry(frame, width=40)
+        entry_name.grid(row=0, column=1, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
+        entry_name.insert(0, rule.get("name", ""))
+        
+        # URL 包含
+        ttk.Label(frame, text="URL 必須包含：").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        entry_contains = ttk.Entry(frame, width=30)
+        entry_contains.grid(row=1, column=1, sticky=tk.W+tk.E, padx=5, pady=5)
+        entry_contains.insert(0, rule.get("url_contains", ""))
+        
+        # 正則表達式
+        ttk.Label(frame, text="正則表達式：").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        entry_pattern = ttk.Entry(frame, width=30)
+        entry_pattern.grid(row=2, column=1, sticky=tk.W+tk.E, padx=5, pady=5)
+        entry_pattern.insert(0, rule.get("pattern", ""))
+        
+        # 動作類型
+        ttk.Label(frame, text="動作：").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        action_var = tk.StringVar(value=rule.get("action", "exclude"))
+        combo_action = ttk.Combobox(frame, textvariable=action_var, values=["exclude", "include"], 
+                                    state="readonly", width=15)
+        combo_action.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # 刪除按鈕
+        btn_delete = ttk.Button(frame, text="刪除", 
+                                command=lambda f=frame: f.destroy())
+        btn_delete.grid(row=0, column=4, rowspan=2, padx=5, pady=5)
+        
+        # 儲存到 frame 的屬性
+        frame._entry_name = entry_name
+        frame._entry_contains = entry_contains
+        frame._entry_pattern = entry_pattern
+        frame._action_var = action_var
+        
+        return frame
+    
+    def _add_custom_rule(self, config, rule_frames):
+        """新增自訂規則"""
+        scrollable_frame = config["_scrollable_frame_rules"]
+        idx = len(rule_frames)
+        
+        new_rule = {
+            "name": "新規則",
+            "pattern": r"[\?&]page=1($|&)",
+            "url_contains": "",
+            "action": "exclude"
+        }
+        
+        frame = self._create_single_custom_rule(scrollable_frame, new_rule, idx)
+        rule_frames.append(frame)
+    
+    def _load_config(self):
+        """載入設定"""
+        config_file = "config.json"
+        default_config = {
+            "start_url": "https://pm.shiny.com.tw/",
+            "max_workers": 3,
+            "request_delay": 0.1,
+            "max_depth": 10,
+            "timeout": 10,
+            "autosave_interval": 5,
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "priorities": {
+                "homepage": 1.0,
+                "product_detail": 0.7,
+                "menu_no_params": 0.9,
+                "menu_with_params": 0.85,
+                "menu_with_page": 0.8,
+                "news": 0.9,
+                "about": 0.8,
+                "shopping_explanation": 0.8,
+                "default": 0.7
+            },
+            "excluded_paths": [
+                "/login.php",
+                "/member.php",
+                "/register.php",
+                "/admin.php"
+            ],
+            "custom_rules": [
+                {
+                    "name": "排除 menu.php 的 page=1",
+                    "pattern": r"[\?&]page=1($|&)",
+                    "url_contains": "/menu.php",
+                    "action": "exclude"
+                }
+            ]
+        }
+        
+        if os.path.exists(config_file):
+            try:
+                import json
+                with open(config_file, "r", encoding="utf-8") as f:
+                    saved_config = json.load(f)
+                    default_config.update(saved_config)
+            except Exception:
+                pass
+        
+        return default_config
+    
+    def _save_settings(self, window, config):
+        """儲存設定"""
+        try:
+            # 讀取所有輸入的值
+            new_config = {
+                "start_url": config["_entry_start_url"].get(),
+                "max_workers": int(config["_entry_threads"].get()),
+                "request_delay": float(config["_entry_delay"].get()),
+                "max_depth": int(config["_entry_depth"].get()),
+                "timeout": int(config["_entry_timeout"].get()),
+                "autosave_interval": int(config["_entry_autosave"].get()),
+                "user_agent": config["_text_ua"].get("1.0", tk.END).strip(),
+                "priorities": {},
+                "excluded_paths": [line.strip() for line in config["_text_exclude"].get("1.0", tk.END).split("\n") if line.strip()]
+            }
+            
+            # 讀取權重設定
+            for key, entry in config["_priority_entries"].items():
+                new_config["priorities"][key] = float(entry.get())
+            
+            # 讀取自訂規則
+            custom_rules = []
+            for frame in config.get("_custom_rule_frames", []):
+                if frame.winfo_exists():
+                    rule = {
+                        "name": frame._entry_name.get(),
+                        "url_contains": frame._entry_contains.get(),
+                        "pattern": frame._entry_pattern.get(),
+                        "action": frame._action_var.get()
+                    }
+                    if rule["name"] and rule["pattern"]:  # 只保存有效規則
+                        custom_rules.append(rule)
+            new_config["custom_rules"] = custom_rules
+            
+            # 儲存到檔案
+            import json
+            with open("config.json", "w", encoding="utf-8") as f:
+                json.dump(new_config, f, ensure_ascii=False, indent=2)
+            
+            messagebox.showinfo("成功", "設定已儲存！")
+            window.destroy()
+        except Exception as e:
+            messagebox.showerror("錯誤", f"儲存設定失敗：{e}")
+    
+    def _reset_to_defaults(self, window, config, notebook):
+        """還原預設設定"""
+        result = messagebox.askyesno("確認", "確定要還原為預設設定嗎？")
+        if result:
+            window.destroy()
+            self.open_custom_settings()  # 重新開啟設定視窗
+    
     def autosave_progress(self):
+        progress_file = "sitemap_progress.pkl"
+        has_changes = False
         # 只在爬蟲運行時才執行自動儲存
         if not self.is_running:
             # 如果爬蟲未運行，延長檢查間隔到 30 秒
             self.root.after(30000, self.autosave_progress)
             return
-            
-        # 簡化日誌輸出，只在有變化時才輸出詳細資訊
-        progress_file = "sitemap_progress.pkl"
-        has_changes = False
-        
         if os.path.exists(progress_file):
             try:
                 with open(progress_file, "rb") as f:
@@ -51,8 +648,12 @@ class SitemapApp:
         interval = 5000 if self.is_running else 30000
         self._autosave_id = self.root.after(interval, self.autosave_progress)
     def update_gui_periodically(self):
+        """定期更新 GUI 顯示"""
         # 更新進度條
-        self.progress.config(value=len(self.crawled_urls))
+        try:
+            self.progress.config(value=len(self.crawled_urls))
+        except:
+            pass
         
         # 讀取累積進度檔
         progress_file = "sitemap_progress.pkl"
@@ -67,279 +668,173 @@ class SitemapApp:
             except Exception:
                 pass
         
-        # 計算統計數字
-        acc_total = len(accumulated_crawled)
-        acc_valid = len(accumulated_valid)
+        # 計算統計數字（確保不為負數）
+        session_crawled = max(0, len(self.crawled_urls) - len(self.session_start_crawled))
+        session_valid = max(0, len(self.valid_sitemap_urls) - len(self.session_start_valid))
+        remaining = len(self.to_crawl)
         
-        # 計算本次新增的數據
-        session_new_crawled = self.crawled_urls - self.session_start_crawled
-        session_new_valid = self.valid_sitemap_urls - self.session_start_valid
-        session_new_total = len(session_new_crawled)
-        session_new_valid_count = len(session_new_valid)
-        cur_to_crawl = len(self.to_crawl)
+        # 更新統計標籤
+        try:
+            self.label_stats.config(
+                text=f"本次已爬：{session_crawled}　有效：{session_valid}　待爬：{remaining}\n累積已爬：{len(accumulated_crawled)}　累積有效：{len(accumulated_valid)}"
+            )
+        except:
+            pass
         
-        # 計算分類統計
-        acc_rule1 = len([url for url in accumulated_crawled if '/product-detail.php' in url])
-        acc_rule2 = len([url for url in accumulated_crawled if '/menu.php' in url])
-        acc_rule3 = acc_total - acc_rule1 - acc_rule2
+        # 更新規則計數顯示（顯示本次增加的數量）
+        try:
+            session_rule1 = self.rule1_count - getattr(self, 'session_start_rule1', 0)
+            session_rule2 = self.rule2_count - getattr(self, 'session_start_rule2', 0)
+            session_rule3 = self.rule3_count - getattr(self, 'session_start_rule3', 0)
+            self.label_rule_count.config(
+                text=f"商品頁: {max(0, session_rule1)}　清單頁: {max(0, session_rule2)}　其他頁: {max(0, session_rule3)} (本次)"
+            )
+        except:
+            pass
         
-        # 計算本次新增的分類統計
-        session_new_rule1 = len([url for url in session_new_crawled if '/product-detail.php' in url])
-        session_new_rule2 = len([url for url in session_new_crawled if '/menu.php' in url])
-        session_new_rule3 = session_new_total - session_new_rule1 - session_new_rule2
-        
-        # 更新顯示
-        self.label_stats.config(text=f"本次已爬：{session_new_total}　有效：{session_new_valid_count}　待爬：{cur_to_crawl}\n累積已爬：{acc_total}　有效：{acc_valid}")
-        self.label_rule_count.config(text=f"本次 商品頁: {session_new_rule1}　清單頁: {session_new_rule2}　其他頁: {session_new_rule3} ｜ 累積 商品頁: {acc_rule1}　清單頁: {acc_rule2}　其他頁: {acc_rule3}")
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Sitemap Generator GUI")
-        self.root.geometry("640x560")
-        self.root.configure(bg="#f8f8f8")
-        self.is_running = False
-        self.thread = None
-        self.threads = []
-        self.num_threads = tk.IntVar(value=3)
-        # 新增爬蟲進度資料結構
-        self.crawled_urls = set()
-        self.valid_sitemap_urls = set()
-        self.to_crawl = set()
-        self._gui_updater_id = None
-        self._autosave_id = None  # 用於追蹤自動儲存的定時器 ID
-        
-        # 本次 session 的起始數據（用於計算本次新增）
-        self.session_start_crawled = set()
-        self.session_start_valid = set()
-
-        # 三種規則頁面計數
-        self.rule1_count = 0
-        self.rule2_count = 0
-        self.rule3_count = 0
-
-        # 標題
-        title = ttk.Label(root, text="Sitemap Generator", font=("Segoe UI", 20, "bold"))
-        title.pack(pady=(18, 8))
-
-        # 起始網址
-        frm_url = ttk.Frame(root)
-        frm_url.pack(pady=5)
-        ttk.Label(frm_url, text="起始網址：", font=("Segoe UI", 12)).pack(side=tk.LEFT)
-        self.entry_url = ttk.Entry(frm_url, width=52, font=("Segoe UI", 12))
-        self.entry_url.pack(side=tk.LEFT, padx=5)
-        self.entry_url.insert(0, "https://pm.shiny.com.tw/")
-
-        # 執行緒數量選擇
-        frm_threads = ttk.Frame(root)
-        frm_threads.pack(pady=5)
-        ttk.Label(frm_threads, text="執行緒數量：", font=("Segoe UI", 12)).pack(side=tk.LEFT)
-        self.combo_threads = ttk.Combobox(frm_threads, textvariable=self.num_threads, values=[1,2,3,4,5,6,7,8,9,10], width=5, state="readonly")
-        self.combo_threads.pack(side=tk.LEFT, padx=5)
-
-        # 狀態
-        self.label_status = ttk.Label(root, text="狀態：等待啟動", font=("Segoe UI", 14), background="#f8f8f8")
-        self.label_status.pack(pady=(12, 6))
-
-        # 進度條
-        self.progress = ttk.Progressbar(root, orient="horizontal", length=540, mode="determinate")
-        self.progress.pack(pady=6)
-
-        # 進度統計（本次/累積）
-        self.label_stats = ttk.Label(root, text="本次已爬：0　有效：0　待爬：0\n累積已爬：0　累積有效：0", font=("Segoe UI", 13, "bold"), background="#f8f8f8", foreground="#2a4d8f")
-        self.label_stats.pack(pady=8)
-
-        # 三種規則頁面數量顯示
-        frm_rule = ttk.Frame(root)
-        frm_rule.pack(pady=3)
-        self.label_rule_count = ttk.Label(frm_rule, text="商品頁: 0　清單頁: 0　其他頁: 0", font=("Segoe UI", 12), foreground="blue", width=60, anchor="w")
-        self.label_rule_count.pack(side=tk.LEFT, padx=5)
+        # 繼續定期更新
+        if self.is_running:
+            self._gui_updater_id = self.root.after(1000, self.update_gui_periodically)
 
 
 
-        # 分散式進度
-        frm_dist = ttk.Frame(root)
-        frm_dist.pack(pady=3)
-        ttk.Label(frm_dist, text="分散式進度：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_dist = ttk.Label(frm_dist, text="--", font=("Segoe UI", 11), foreground="purple", width=60, anchor="w")
-        self.label_dist.pack(side=tk.LEFT, padx=5)
 
-        # robots.txt 狀態
-        frm_robots = ttk.Frame(root)
-        frm_robots.pack(pady=3)
-        ttk.Label(frm_robots, text="robots.txt 狀態：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_robots = ttk.Label(frm_robots, text="--", font=("Segoe UI", 11), foreground="blue", width=60, anchor="w")
-        self.label_robots.pack(side=tk.LEFT, padx=5)
+    def start_crawler(self):
+        self.is_running = True
+        self.btn_start.config(state=tk.DISABLED)
+        self.btn_stop.config(state=tk.NORMAL)
+        self.label_status.config(text="狀態：爬蟲執行中...")
+        self.progress["value"] = 0
 
-        # sitemap.xml 狀態
-        frm_sitemap = ttk.Frame(root)
-        frm_sitemap.pack(pady=3)
-        ttk.Label(frm_sitemap, text="sitemap.xml 狀態：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_sitemap = ttk.Label(frm_sitemap, text="--", font=("Segoe UI", 11), foreground="blue", width=60, anchor="w")
-        self.label_sitemap.pack(side=tk.LEFT, padx=5)
+        start_url = self.entry_url.get().strip()
+        if not start_url:
+            messagebox.showwarning("警告", "請輸入起始網址！")
+            self.stop_crawler()
+            return
 
-        # 錯誤訊息
-        frm_error = ttk.Frame(root)
-        frm_error.pack(pady=3)
-        ttk.Label(frm_error, text="錯誤：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_error = ttk.Label(frm_error, text="--", font=("Segoe UI", 11), foreground="red", width=60, anchor="w")
-        self.label_error.pack(side=tk.LEFT, padx=5)
+        # 啟動前自動備份現有 sitemap_progress.pkl
+        progress_file = "sitemap_progress.pkl"
+        if os.path.exists(progress_file):
+            idx = 2
+            while True:
+                backup_file = f"sitemap_progress{idx}.pkl"
+                if not os.path.exists(backup_file):
+                    import shutil
+                    shutil.copyfile(progress_file, backup_file)
+                    break
+                idx += 1
 
-        # 按鈕區
-        frm_btn = ttk.Frame(root)
-        frm_btn.pack(pady=(22, 10))
-        self.btn_start = ttk.Button(frm_btn, text="啟動爬蟲", command=self.start_crawler, width=20)
-        self.btn_start.pack(side=tk.LEFT, padx=12)
-        self.btn_stop = ttk.Button(frm_btn, text="停止爬蟲", command=self.stop_crawler, state=tk.DISABLED, width=20)
-        self.btn_stop.pack(side=tk.LEFT, padx=12)
-        self.btn_load_progress = ttk.Button(frm_btn, text="讀取進度", command=self.load_progress, width=20)
-        self.btn_load_progress.pack(side=tk.LEFT, padx=12)
+        # 記錄本次啟動時的起始數據（用於計算本次統計）
+        self.session_start_crawled = set(self.crawled_urls)
+        self.session_start_valid = set(self.valid_sitemap_urls)
+        self.session_start_rule1 = self.rule1_count
+        self.session_start_rule2 = self.rule2_count
+        self.session_start_rule3 = self.rule3_count
 
-        # 啟動自動儲存進度（只在爬蟲運行時才執行）
-        # self.autosave_progress()  # 改為在開始爬蟲時才啟動
+        # 啟動自動儲存進度
+        self.autosave_progress()
+
+        # 啟動 GUI 定期更新
+        self.update_gui_periodically()
+
+        def progress_callback(data):
+            # 更新數據
+            self.crawled_urls = data["crawled_urls"]
+            self.valid_sitemap_urls = data["valid_sitemap_urls"]
+            self.to_crawl = data["urls_to_crawl"]
+            self.rule1_count = data.get("rule1_count", 0)
+            self.rule2_count = data.get("rule2_count", 0)
+            self.rule3_count = data.get("rule3_count", 0)
+
+        num_threads = self.num_threads.get()
+        def run_crawler_with_threads():
+            if not self.is_running:
+                return
+            
+            # 準備要傳遞給爬蟲的初始狀態
+            initial_state = {
+                "urls_to_crawl": self.to_crawl,
+                "crawled_urls": self.crawled_urls,
+                "valid_sitemap_urls": self.valid_sitemap_urls,
+                "rule1_count": self.rule1_count,
+                "rule2_count": self.rule2_count,
+                "rule3_count": self.rule3_count,
+            }
+            # 修正：傳入 initial_state
+            self.run_crawler(start_url, progress_callback, num_threads, lambda: self.is_running, initial_state=initial_state)
+
+        t = threading.Thread(target=run_crawler_with_threads)
+        self.threads = [t]
+        t.start()
+
+        # 修正：將 GUI 更新操作移回主執行緒
+        def on_crawler_done():
+            self.is_running = False
+            self.btn_start.config(state=tk.NORMAL)
+            self.btn_stop.config(state=tk.DISABLED)
+            self.label_status.config(text="狀態：爬取完成")
+            self.progress["value"] = 100
+            self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
+            self.generate_xml_file(list(self.valid_sitemap_urls))
+
+        def wait_threads():
+            t.join() # 等待爬蟲執行緒結束
+            try:
+                # 使用 after 將 GUI 更新排入主執行緒的事件佇列
+                self.root.after(0, on_crawler_done)
+            except tk.TclError:
+                # 如果視窗已關閉，會引發 TclError，直接忽略
+                print("視窗已關閉，略過完成後續的 GUI 更新。")
+
+        wait_thread = threading.Thread(target=wait_threads)
+        wait_thread.start()
 
     def load_progress(self):
-        import glob
-        from tkinter import filedialog
-        # 搜尋所有進度檔
-        progress_files = glob.glob("*.pkl")
-        if not progress_files:
-            messagebox.showinfo("進度讀取", "找不到任何進度檔！")
+        """讀取進度檔案"""
+        import tkinter.filedialog as filedialog
+        
+        # 開啟檔案選擇對話框
+        progress_file = filedialog.askopenfilename(
+            title="選擇進度檔案",
+            filetypes=[
+                ("Pickle files", "*.pkl"),
+                ("All files", "*.*")
+            ],
+            initialfile="sitemap_progress.pkl"
+        )
+        
+        if not progress_file:
             return
-        # 彈出檔案選擇視窗
-        file_path = filedialog.askopenfilename(title="選擇進度檔", filetypes=[("Pickle Files", "*.pkl")], initialdir=os.getcwd())
-        if not file_path:
+        
+        if not os.path.exists(progress_file):
+            messagebox.showinfo("提示", "找不到進度檔案！")
             return
+        
         try:
-            with open(file_path, "rb") as f:
+            with open(progress_file, "rb") as f:
                 data = pickle.load(f)
-            
-            # 實際載入數據到程式中
             self.crawled_urls = set(data.get("crawled_urls", set()))
             self.valid_sitemap_urls = set(data.get("valid_sitemap_urls", set()))
             self.to_crawl = set(data.get("urls_to_crawl", set()))
             self.rule1_count = data.get("rule1_count", 0)
             self.rule2_count = data.get("rule2_count", 0)
             self.rule3_count = data.get("rule3_count", 0)
-            
             # 記錄本次 session 的起始數據
             self.session_start_crawled = set(self.crawled_urls)
             self.session_start_valid = set(self.valid_sitemap_urls)
-            
+            self.session_start_rule1 = self.rule1_count
+            self.session_start_rule2 = self.rule2_count
+            self.session_start_rule3 = self.rule3_count
             # 更新顯示
-            crawled = len(self.crawled_urls)
-            valid = len(self.valid_sitemap_urls)
-            to_crawl = len(self.to_crawl)
-            self.label_stats.config(text=f"讀取進度檔：{os.path.basename(file_path)}\n已爬：{crawled}　有效：{valid}　待爬：{to_crawl}")
-            self.progress["value"] = crawled
-            
-            # 更新分類統計
-            rule1 = len([url for url in self.crawled_urls if '/product-detail.php' in url])
-            rule2 = len([url for url in self.crawled_urls if '/menu.php' in url])
-            rule3 = crawled - rule1 - rule2
-            self.label_rule_count.config(text=f"本次 商品頁: {rule1}　清單頁: {rule2}　其他頁: {rule3} ｜ 累積 商品頁: {rule1}　清單頁: {rule2}　其他頁: {rule3}")
-            
-            messagebox.showinfo("進度讀取成功", f"已成功載入進度檔：{os.path.basename(file_path)}\n可繼續爬取剩餘的 {to_crawl} 個網址")
-            
+            self.label_stats.config(
+                text=f"本次已爬：0　有效：0　待爬：{len(self.to_crawl)}\n累積已爬：{len(self.crawled_urls)}　累積有效：{len(self.valid_sitemap_urls)}"
+            )
+            self.label_rule_count.config(
+                text=f"商品頁: {self.rule1_count}　清單頁: {self.rule2_count}　其他頁: {self.rule3_count} (累積總數)"
+            )
+            messagebox.showinfo("成功", f"已載入進度：\n已爬取 {len(self.crawled_urls)} 個網址\n有效網址 {len(self.valid_sitemap_urls)} 個\n待爬取 {len(self.to_crawl)} 個")
         except Exception as e:
-            messagebox.showerror("進度讀取失敗", f"讀取失敗：{e}")
-
-        # 固定 label 寬度，避免畫面跳動
-        for lbl in [self.label_seo, self.label_alert, self.label_dist, self.label_robots, self.label_sitemap, self.label_error]:
-            lbl.config(width=60)
-
-
-    def on_close(self):
-        # 關閉視窗時，強制停止爬蟲執行緒
-        self.is_running = False
-        try:
-            if self.thread and self.thread.is_alive():
-                self.thread.join(timeout=2)
-        except Exception:
-            pass
-        self.root.destroy()
-
-    def start_crawler(self):
-        self.is_running = True
-        def run():
-            self.btn_start.config(state=tk.DISABLED)
-            self.btn_stop.config(state=tk.NORMAL)
-            self.label_status.config(text="狀態：爬蟲執行中...")
-            self.progress["value"] = 0
-
-            start_url = self.entry_url.get().strip()
-            if not start_url:
-                messagebox.showwarning("警告", "請輸入起始網址！")
-                self.stop_crawler()
-                return
-
-            # 只在第一次啟動時初始化本次 session 的進度
-            progress_file = "sitemap_progress.pkl"
-            if os.path.exists(progress_file) and not self.crawled_urls:
-                try:
-                    with open(progress_file, "rb") as f:
-                        data = pickle.load(f)
-                    self.crawled_urls = set(data.get("crawled_urls", set()))
-                    self.valid_sitemap_urls = set(data.get("valid_sitemap_urls", set()))
-                    self.to_crawl = set(data.get("urls_to_crawl", set()))
-                    self.rule1_count = data.get("rule1_count", 0)
-                    self.rule2_count = data.get("rule2_count", 0)
-                    self.rule3_count = data.get("rule3_count", 0)
-                    
-                    # 記錄本次 session 的起始數據
-                    self.session_start_crawled = set(self.crawled_urls)
-                    self.session_start_valid = set(self.valid_sitemap_urls)
-                except Exception:
-                    pass
-
-            # 啟動自動儲存進度
-            self.autosave_progress()
-
-            def progress_callback(data):
-                self.crawled_urls = data["crawled_urls"]
-                self.valid_sitemap_urls = data["valid_sitemap_urls"]
-                self.to_crawl = data["urls_to_crawl"]
-                self.rule1_count = data.get("rule1_count", 0)
-                self.rule2_count = data.get("rule2_count", 0)
-                self.rule3_count = data.get("rule3_count", 0)
-                # 使用 thread-safe 的方式更新 GUI
-                try:
-                    self.root.after(0, self.update_gui_periodically)
-                except RuntimeError:
-                    # 如果主執行緒已經結束，忽略錯誤
-                    pass
-
-            from src.sitemap_generator import run_crawler, create_sitemap
-            num_threads = self.num_threads.get()
-            import concurrent.futures
-            def run_crawler_with_threads():
-                # 加入 is_running 狀態檢查
-                if not self.is_running:
-                    return
-                # 傳遞 is_running 檢查函數
-                run_crawler(start_url, progress_callback, num_threads, lambda: self.is_running)
-            t = threading.Thread(target=run_crawler_with_threads)
-            self.threads.append(t)
-            t.start()
-
-            # 等待所有爬蟲執行緒結束
-            for t in self.threads:
-                while t.is_alive():
-                    if not self.is_running:
-                        break
-                    t.join(timeout=0.5)
-
-            self.is_running = False
-            self.btn_start.config(state=tk.NORMAL)
-            self.btn_stop.config(state=tk.DISABLED)
-            self.label_status.config(text="狀態：等待啟動")
-            self.progress["value"] = 100
-            self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
-            create_sitemap(list(self.valid_sitemap_urls), "sitemap.xml")
-
-        self.thread = threading.Thread(target=run)
-        self.thread.start()
-        if self._gui_updater_id:
-            self.root.after_cancel(self._gui_updater_id)
-            self._gui_updater_id = None
+            messagebox.showerror("錯誤", f"無法讀取進度檔案：{e}")
 
     def stop_crawler(self):
         # 停止爬蟲
@@ -454,51 +949,30 @@ class SitemapApp:
             depth += 1
 
     def save_progress(self, crawled_urls, valid_sitemap_urls, to_crawl, rule1_count=0, rule2_count=0, rule3_count=0):
-        # 修正合併邏輯：僅在本次進度有新網址時才累積到舊進度
         progress_file = "sitemap_progress.pkl"
-        old = {}
+        
+        # 直接使用當前記憶體中的資料作為最新狀態，這才是正確的合併邏輯
+        merged_data = {
+            "crawled_urls": set(crawled_urls),
+            "valid_sitemap_urls": set(valid_sitemap_urls),
+            "urls_to_crawl": set(to_crawl),
+            "rule1_count": rule1_count,
+            "rule2_count": rule2_count,
+            "rule3_count": rule3_count
+        }
+
         if os.path.exists(progress_file):
             try:
                 with open(progress_file, "rb") as f:
-                    old = pickle.load(f)
+                    if pickle.load(f) == merged_data:
+                        return # 如果資料沒有變化，則不執行寫入
             except Exception:
-                old = {}
-        old_crawled = set(old.get("crawled_urls", set()))
-        old_valid = set(old.get("valid_sitemap_urls", set()))
-        old_to_crawl = set(old.get("urls_to_crawl", set()))
-        new_crawled = set(crawled_urls)
-        new_valid = set(valid_sitemap_urls)
-        new_to_crawl = set(to_crawl)
-        # 直接 union 舊進度與本次 session 的所有資料
-        merged_crawled = old_crawled | new_crawled
-        merged_valid = old_valid | new_valid
-        merged_to_crawl = old_to_crawl | new_to_crawl
-        merged = {
-            "crawled_urls": merged_crawled,
-            "valid_sitemap_urls": merged_valid,
-            "urls_to_crawl": merged_to_crawl,
-            "rule1_count": old.get("rule1_count", 0) + rule1_count,
-            "rule2_count": old.get("rule2_count", 0) + rule2_count,
-            "rule3_count": old.get("rule3_count", 0) + rule3_count
-        }
-        
-        # 計算新增的網址
-        new_crawled_diff = new_crawled - old_crawled
-        new_valid_diff = new_valid - old_valid
-        
-        # 只在有實際變化時才輸出日誌
-        if new_crawled_diff or new_valid_diff:
-            print(f"[save_progress] 合併結果: 已爬={len(merged_crawled)} 有效={len(merged_valid)} 待爬={len(merged_to_crawl)}")
-            if new_crawled_diff:
-                print(f"[save_progress] 新增 crawled_urls: {len(new_crawled_diff)} 筆")
-            if new_valid_diff:
-                print(f"[save_progress] 新增 valid_sitemap_urls: {len(new_valid_diff)} 筆")
+                pass
+
         try:
             with open(progress_file, "wb") as f:
-                pickle.dump(merged, f)
-            # 只在有變化時才輸出寫入成功訊息
-            if new_crawled_diff or new_valid_diff:
-                print(f"[save_progress] 寫入成功: 已爬:{len(merged['crawled_urls'])} 有效:{len(merged['valid_sitemap_urls'])} 待爬:{len(merged['urls_to_crawl'])}")
+                pickle.dump(merged_data, f)
+            print(f"[save_progress] 寫入成功: 已爬:{len(merged_data['crawled_urls'])} 有效:{len(merged_data['valid_sitemap_urls'])} 待爬:{len(merged_data['urls_to_crawl'])}")
         except Exception as e:
             print(f"[save_progress] 寫入失敗: {e}")
 
@@ -515,7 +989,7 @@ class SitemapApp:
     def update_sitemap(self, valid_sitemap_urls):
         # 更新 sitemap.xml 檔案
         try:
-            create_sitemap(list(valid_sitemap_urls), "sitemap.xml")
+            self.generate_xml_file(list(valid_sitemap_urls))
             self.label_sitemap.config(text="sitemap.xml 更新成功", foreground="green")
         except Exception as e:
             self.label_sitemap.config(text=f"sitemap.xml 更新失敗：{e}", foreground="red")
@@ -525,12 +999,10 @@ if __name__ == "__main__":
     app = SitemapApp(root)
 
     def on_closing():
+        if app.is_running:
+            app.stop_crawler() # 優雅地停止爬蟲和計時器
         try:
-            app.is_running = False
-            # 嘗試終止所有執行緒
-            for t in getattr(app, 'threads', []):
-                if t.is_alive():
-                    t.join(timeout=2)
+            app.save_progress(app.crawled_urls, app.valid_sitemap_urls, app.to_crawl, app.rule1_count, app.rule2_count, app.rule3_count)
         except Exception:
             pass
         root.destroy()

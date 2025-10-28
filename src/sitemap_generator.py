@@ -8,14 +8,13 @@ from urllib.parse import urljoin, urlparse
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-import pickle
 import re
 
 # --- 設定區 ---
 # 請將此處改為您網站的起始網址
 START_URL = "https://pm.shiny.com.tw/" 
 # 輸出檔案名稱
-OUTPUT_FILENAME = "sitemap_py.xml"
+OUTPUT_FILENAME = "sitemap.xml"
 
 def create_sitemap(valid_sitemap_urls, output_filename):
     """
@@ -32,17 +31,28 @@ def create_sitemap(valid_sitemap_urls, output_filename):
     except Exception as e:
         print(f"sitemap.xml 更新失敗: {e}")
 
-def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_func=None):
+def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_func=None, initial_state=None):
     """
     爬取網站並即時回報進度，結束後自動產生 sitemap.xml
     """
     base_netloc = urlparse(start_url).netloc
-    urls_to_crawl = set([start_url])
-    crawled_urls = set()
-    valid_sitemap_urls = set()
-    rule1_count = 0
-    rule2_count = 0
-    rule3_count = 0
+    # 若有 initial_state 則續接進度，否則初始化
+    if initial_state:
+        urls_to_crawl = set(initial_state.get("urls_to_crawl", [start_url]))
+        if not urls_to_crawl:
+            urls_to_crawl = set([start_url])
+        crawled_urls = set(initial_state.get("crawled_urls", []))
+        valid_sitemap_urls = set(initial_state.get("valid_sitemap_urls", []))
+        rule1_count = initial_state.get("rule1_count", 0)
+        rule2_count = initial_state.get("rule2_count", 0)
+        rule3_count = initial_state.get("rule3_count", 0)
+    else:
+        urls_to_crawl = set([start_url])
+        crawled_urls = set()
+        valid_sitemap_urls = set()
+        rule1_count = 0
+        rule2_count = 0
+        rule3_count = 0
     lock = threading.Lock()
 
     def crawl_url(current_url):
@@ -65,7 +75,7 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
             if response.status_code != 200:
                 print(f"  -> 狀態碼異常: {response.status_code}, 跳過此頁面")
                 return [], None
-            soup = BeautifulSoup(response.content, 'lxml')
+            soup = BeautifulSoup(response.content, 'html.parser')
             if '/product-detail.php' in current_url:
                 product_name_element = soup.find(id="product_name")
                 if product_name_element and product_name_element.get('value', '').strip():
@@ -196,7 +206,7 @@ def generate_xml_file(urls):
     exclude_patterns = ['/login.php', '/member.php', '/register.php']
     urls = {u for u in urls if not any(p in u for p in exclude_patterns)}
 
-    urls = remove_menu_page1(urls)
+    urls = apply_custom_rules(urls)
 
     xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -236,16 +246,65 @@ def generate_xml_file(urls):
     with open(OUTPUT_FILENAME, 'w', encoding='utf-8') as f:
         f.write(xml_content)
     print(f"\n--- Sitemap 已成功生成: {OUTPUT_FILENAME} ---")
+    # 已產生 sitemap.xml，無自動開啟
+
+def apply_custom_rules(urls):
+    """
+    套用自訂規則過濾 URL
+    """
+    import re
+    import os
+    
+    # 讀取 config.json
+    config_file = "config.json"
+    if not os.path.exists(config_file):
+        # 如果沒有 config.json，使用舊的邏輯
+        return remove_menu_page1(urls)
+    
     try:
-        import webbrowser
-        import os
-        webbrowser.open('file://' + os.path.abspath(OUTPUT_FILENAME))
-    except Exception as e:
-        print(f"[自動開啟失敗] {e}")
+        import json
+        with open(config_file, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        custom_rules = config.get("custom_rules", [])
+    except Exception:
+        # 讀取失敗時使用舊的邏輯
+        return remove_menu_page1(urls)
+    
+    if not custom_rules:
+        # 沒有自訂規則時使用舊的邏輯
+        return remove_menu_page1(urls)
+    
+    result = set()
+    for url in urls:
+        should_exclude = False
+        should_include = False
+        
+        # 檢查所有規則
+        for rule in custom_rules:
+            pattern = rule.get("pattern", "")
+            url_contains = rule.get("url_contains", "")
+            action = rule.get("action", "exclude")
+            
+            # 檢查 URL 是否包含指定字串
+            if url_contains and url_contains not in url:
+                continue
+            
+            # 檢查是否匹配正則表達式
+            if pattern and re.search(pattern, url):
+                if action == "exclude":
+                    should_exclude = True
+                elif action == "include":
+                    should_include = True
+        
+        # 包含規則優先於排除規則，如果都沒匹配則預設包含
+        if should_include or (not should_exclude and not should_include):
+            result.add(url)
+    
+    return result
 
 def remove_menu_page1(urls):
     """
-    排除 /menu.php?cid=xxx&page=1 這種網址，只保留 page=1 參數以外的 menu.php
+    排除 /menu.php?cid=xxx&page=1 這種網址，只保留 page=1 參數以外的 menu.php（舊版邏輯）
     """
     import re
     result = set()
