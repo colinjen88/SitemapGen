@@ -8,7 +8,7 @@
 
 ## 專案簡介
 ((這是寫給現在公司用的, 專屬客製化爬蟲工具))
-這是一個自動化網站爬蟲工具，專門用於生成符合 SEO 標準的 sitemap.xml 檔案。程式會自動爬取指定網站，依據預設規則篩選有效網址，並產生結構化的 sitemap 檔案。
+這是一個自動化網站爬蟲工具，專門用於生成符合 SEO 標準的 sitemap_YYYYmmdd_HHMMSS.xml 檔案。程式會自動爬取指定網站，依據預設規則篩選有效網址，並產生結構化的 sitemap 檔案。
 
 ## 主要功能
 
@@ -22,36 +22,60 @@
 ## 檔案結構
 
 ```
-sitemap_progress/
-├── sitemap_gui.py              # 主程式（GUI 介面）
+SitemapGen/
+├── sitemap_gui.py                  # 主程式（GUI 介面）
 ├── src/
-│   └── sitemap_generator.py   # 核心爬蟲引擎
+│   ├── __init__.py
+│   └── sitemap_generator.py        # 核心爬蟲引擎
 ├── scripts/
 │   ├── convert_progress_to_sitemap.py      # 進度轉換腳本
 │   └── convert_progress_to_sitemap_ok.py   # 進度轉換腳本（已驗證）
 ├── tools/
-│   ├── remove_page1.py         # 移除 page=1 參數的工具
-│   ├── sitemap_gui.spec        # PyInstaller 打包設定檔
-│   ├── docs/SITEMAP_RULES.md   # 規則說明文件
-Custom-made/
-├── docs/SITEMAP_RULES.md       # 規則說明與預設網址（第一行）
-├── URL_RULES.md               # 網址收錄規則細節
-## Sitemap 檔案說明
-
-專案可能會產生兩個 sitemap 檔案：
-
-- `sitemap_py.xml`：由本專案主程式產生，含有 priority 欄位，符合 SEO 標準，建議正式提交搜尋引擎。
-- `sitemap.xml`：可能由其他腳本或轉換工具產生，格式較簡單，僅含網址。
-
-兩者內容來源與產生方式可依需求調整，建議以 `sitemap_py.xml` 為主。
-│   ├── build/                  # 編譯輸出目錄
-│   └── dist/                   # 分發目錄
+│   ├── remove_page1.py             # 移除 page=1 參數的工具
+│   ├── sitemap_gui.spec            # PyInstaller 打包設定檔
+│   └── build/
+│       └── sitemap_gui/            # 編譯產物
+├── Custom-made/
+│   ├── SITEMAP_RULES.md            # 規則說明與預設網址
+│   └── URL_RULES.md                # 網址收錄規則細節
+├── docs/
+│   ├── 快速使用說明.md
+│   ├── OPTIMIZATION_SUMMARY.md
+│   ├── SITEMAP_RULES.md
+│   ├── SEO排除收錄規則與網址列表.md
+│   └── 修正紀錄_SitemapGen_GUI啟動錯誤.md
+├── setup_rules/
+│   ├── config.json                 # 客製化設定檔
+│   └── config.py
+├── autosave/
+│   └── sitemap_YYYYmmdd_HHMMSS.xml # 自動產生的 sitemap 檔案
 ├── output/
-│   └── here_you_are/           # 生成的 sitemap 檔案存放處
-│       └── sitemap_20250912_094425.xml
-├── sitemap_crawl_temp.pkl       # 主要進度暫存檔
-└── README.md                   # 本說明文件
+│   └── here_you_are/
+│       └── sitemap_YYYYmmdd_HHMMSS.xml     # 歷史產出檔案
+├── crawl_temp_YYYYmmdd_HHMMSS.pkl         # 進度暫存檔（每次啟動自動命名）
+└── README.md                       # 本說明文件
 ```
+
+## 檔案命名規則
+
+### 進度檔案
+- **格式**：`crawl_temp_YYYYmmdd_HHMMSS.pkl`
+- **說明**：每次啟動程式時自動產生，避免覆蓋之前的進度
+- **範例**：`crawl_temp_20251029_140000.pkl`
+
+### Sitemap 檔案
+- **格式**：`sitemap_YYYYmmdd_HHMMSS.xml`
+- **說明**：每次產生時自動命名，避免覆蓋之前的檔案
+- **範例**：`sitemap_20251029_153000.xml`
+
+### 自動保存機制
+- **進度檔案**：每5秒自動保存到 `crawl_temp_YYYYmmdd_HHMMSS.pkl`
+- **Sitemap 檔案**：爬取完成後自動產生 `sitemap_YYYYmmdd_HHMMSS.xml`
+
+### 操作流程補充
+- **自動保存**：每次啟動自動產生新進度檔，並每5秒自動保存
+- **生成 Sitemap**：每次產生新檔案，檔名自動帶時間戳
+- **檔案管理**：所有檔案都採用時間戳命名，避免覆蓋，便於版本管理
 
 ## 快速開始
 
@@ -91,6 +115,8 @@ python src/sitemap_generator.py
 python scripts/convert_progress_to_sitemap.py
 ```
 
+腳本會自動尋找最新的 `crawl_temp_YYYYmmdd_HHMMSS.pkl` 檔案，並產生對應的 `sitemap_YYYYmmdd_HHMMSS.xml`。
+
 ## 詳細使用說明
 
 ### GUI 介面操作
@@ -111,8 +137,8 @@ python scripts/convert_progress_to_sitemap.py
    - **本次統計**：顯示本次 session 新增的網址數量
    - **累積統計**：顯示總計的網址數量
 7. **停止爬取**：可隨時點擊「停止」按鈕中斷爬取
-8. **自動保存**：程式會每5秒自動保存進度到 `sitemap_crawl_temp.pkl`
-9. **生成 Sitemap**：爬取完成後自動生成 sitemap.xml
+8. **自動保存**：程式會每5秒自動保存進度到 `crawl_temp_YYYYmmdd_HHMMSS.pkl`
+9. **生成 Sitemap**：爬取完成後自動生成 `sitemap_YYYYmmdd_HHMMSS.xml`
 
 ### 客製化設定說明
 
@@ -193,8 +219,8 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 
 1. **啟動程式**：執行 `python sitemap_gui.py`
 2. **設定參數**：
-   - 起始網址：預設為 `https://www..com.tw/`
-   - 輸出檔名：預設為 `sitemap_py.xml`
+   - 起始網址：預設為 `https://pm.shiny.com.tw/`
+   - 輸出檔名：自動產生 `sitemap_YYYYmmdd_HHMMSS.xml`
    - 執行緒數量：可調整並發爬取數量
 3. **讀取進度**：點擊「讀取進度」按鈕載入之前的爬取進度
 4. **開始爬取**：點擊「開始爬蟲」按鈕
@@ -202,16 +228,17 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
    - **本次統計**：顯示本次 session 新增的網址數量
    - **累積統計**：顯示總計的網址數量
 6. **停止爬取**：可隨時點擊「停止」按鈕中斷爬取
-7. **自動保存**：程式會每5秒自動保存進度到 `sitemap_crawl_temp.pkl`
-8. **生成 Sitemap**：爬取完成後自動生成 sitemap.xml
+7. **自動保存**：程式會每5秒自動保存進度到 `crawl_temp_YYYYmmdd_HHMMSS.pkl`
+8. **生成 Sitemap**：爬取完成後自動生成 `sitemap_YYYYmmdd_HHMMSS.xml`
 
 ### 進度檔案說明
 
-- `sitemap_crawl_temp.pkl`：主要進度暫存檔，包含：
+- `crawl_temp_YYYYmmdd_HHMMSS.pkl`：主要進度暫存檔，包含：
   - `crawled_urls`：已爬取的網址集合
   - `valid_sitemap_urls`：有效的 sitemap 網址集合
   - `urls_to_crawl`：待爬取的網址佇列
   - `rule1_count`、`rule2_count`、`rule3_count`：規則計數
+  - **自動命名**：每次啟動程式時自動產生，避免覆蓋之前的進度
 
 ### 網址收錄規則
 
@@ -240,7 +267,7 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 
 ### scripts/ 目錄
 
-- **convert_progress_to_sitemap.py**：將進度檔案轉換為 sitemap.xml
+- **convert_progress_to_sitemap.py**：將進度檔案轉換為 sitemap_YYYYmmdd_HHMMSS.xml
 - **convert_progress_to_sitemap_ok.py**：已驗證的轉換腳本
 
 ### tools/ 目錄
@@ -251,10 +278,10 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 - **build/**：編譯過程產生的臨時檔案
 - **dist/**：最終的可執行檔案
 
-### output/ 目錄
+### autosave/ 目錄
 
-- **here_you_are/**：存放生成的 sitemap 檔案
-  - `sitemap_20250912_094425.xml`：包含 4,001 筆 URL 資料的 sitemap 檔案
+- **自動保存目錄**：存放生成的 sitemap 檔案
+  - `sitemap_YYYYmmdd_HHMMSS.xml`：自動產生的 sitemap 檔案，包含完整的 URL 資料
 
 ## 進階功能
 
@@ -330,6 +357,7 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 - **v1.3**：新增進度保存功能
 - **v1.4**：重構檔案結構，提升可維護性
 - **v1.5**：修復功能問題，完善 GUI 功能實現
+- **v1.6**：實作時間戳檔案命名，避免檔案覆蓋，提升版本管理
 
 ## 授權資訊
 
@@ -348,13 +376,13 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 ### 主要工具（一般用戶）
 1. 啟動 `sitemap_gui.py`（雙擊或命令列執行）。
 2. 輸入起始網址，選擇執行緒數量。
-3. 按下「開始」自動爬取，完成後自動產生 sitemap.xml。
+3. 按下「開始」自動爬取，完成後自動產生 `sitemap_YYYYmmdd_HHMMSS.xml`。
 4. 所有網址去重、首頁唯一化、分頁排除、常見無效頁面排除都自動完成。
-5. 產生的 sitemap.xml 可直接上傳給搜尋引擎。
+5. 產生的 `sitemap_YYYYmmdd_HHMMSS.xml` 可直接上傳給搜尋引擎。
 
 ### 進階批次處理（選用）
 - 適合需合併多次進度、或自訂規則的技術用戶。
-- 執行 `src/sitemap_generator.py` 內的 `export_sitemap_with_priority_from_progress`，可從進度檔（pkl）批次產生 sitemap。
+- 執行 `src/sitemap_generator.py` 內的 `export_sitemap_with_priority_from_progress`，可從進度檔（`crawl_temp_YYYYmmdd_HHMMSS.pkl`）批次產生 `sitemap_YYYYmmdd_HHMMSS.xml`。
 - 可自訂 `config.json` 進行更細緻的網址過濾。
 
 ---

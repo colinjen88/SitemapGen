@@ -14,12 +14,27 @@ import re
 # 請將此處改為您網站的起始網址
 START_URL = "https://pm.shiny.com.tw/" 
 # 輸出檔案名稱
-OUTPUT_FILENAME = "sitemap.xml"
 
-def create_sitemap(valid_sitemap_urls, output_filename):
+from datetime import datetime
+
+# 啟動時記錄開始時間
+START_TIME_STR = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+# 動態產生進度暫存檔名
+def get_progress_filename():
+    return f"crawl_temp_{START_TIME_STR}.pkl"
+
+# 動態產生 sitemap 輸出檔名
+def get_sitemap_filename():
+    return f"sitemap_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+
+
+def create_sitemap(valid_sitemap_urls, output_filename=None):
     """
-    依據有效網址集合，輸出 sitemap.xml
+    依據有效網址集合，輸出 sitemap 檔案
     """
+    if output_filename is None:
+        output_filename = get_sitemap_filename()
     try:
         with open(output_filename, "w", encoding="utf-8") as f:
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -29,7 +44,7 @@ def create_sitemap(valid_sitemap_urls, output_filename):
             f.write('</urlset>\n')
         print(f"--- Sitemap 已成功生成: {output_filename} ---")
     except Exception as e:
-        print(f"sitemap.xml 更新失敗: {e}")
+        print(f"Sitemap 檔案更新失敗: {e}")
 
 def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_func=None, initial_state=None):
     """
@@ -184,13 +199,16 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
     generate_xml_file(valid_sitemap_urls)
     return crawled_urls, valid_sitemap_urls, urls_to_crawl
 
-def generate_xml_file(urls):
+def generate_xml_file(urls, output_filename=None):
     """
     根據收集到的有效 URL 生成 sitemap.xml 檔案
     """
     if not urls:
         print("沒有找到任何有效的 URL，無法生成 sitemap.xml")
         return
+
+    if output_filename is None:
+        output_filename = "sitemap.xml"
 
     homepage = START_URL if START_URL.endswith('/') else START_URL + '/'
     homepage_variants = {
@@ -280,9 +298,9 @@ def generate_xml_file(urls):
 
     xml_content += '</urlset>'
 
-    with open(OUTPUT_FILENAME, 'w', encoding='utf-8') as f:
+    with open(output_filename, 'w', encoding='utf-8') as f:
         f.write(xml_content)
-    print(f"\n--- Sitemap 已成功生成: {OUTPUT_FILENAME} ---")
+    print(f"\n--- Sitemap 已成功生成: {output_filename} ---")
     # 已產生 sitemap.xml，無自動開啟
 
 def apply_custom_rules(urls):
@@ -295,7 +313,7 @@ def apply_custom_rules(urls):
     # 讀取 config.json
     config_file = "setup_rules/config.json"
     if not os.path.exists(config_file):
-    # 如果沒有 setup_rules/config.json，使用舊的邏輯
+        # 如果沒有 setup_rules/config.json，使用舊的邏輯
         return remove_menu_page1(urls)
     
     try:

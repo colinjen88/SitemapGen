@@ -1,28 +1,33 @@
 import sys
 import os
+from datetime import datetime
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
-from src.sitemap_generator import generate_xml_file, run_crawler
+from src.sitemap_generator import create_sitemap, run_crawler, get_progress_filename, get_sitemap_filename
 import threading
 import time
 from tkinter import ttk, messagebox
 import tkinter as tk
 import pickle
 
-CRAWLED_FILE = "crawled_urls.pkl"
-VALID_FILE = "valid_sitemap_urls.pkl"
-TOCRAWL_FILE = "urls_to_crawl.pkl"
+
+# 啟動時記錄開始時間
+START_TIME_STR = datetime.now().strftime("%Y%m%d_%H%M%S")
+def get_gui_progress_file():
+    return f"crawl_temp_{START_TIME_STR}.pkl"
 
 class SitemapApp:
     def __init__(self, root):
-        self.generate_xml_file = generate_xml_file
+        self.generate_xml_file = create_sitemap
         self.run_crawler = run_crawler
+        self.progress_file = get_gui_progress_file()
 
         self.root = root
         self.root.title("Sitemap Generator GUI")
-        self.root.geometry("700x600")
+        self.root.geometry("700x640")
         self.is_running = False
+        self.can_resume = False  # 新增：是否可繼續抓取
         self.threads = []
         self.num_threads = tk.IntVar(value=3)
         self.crawled_urls = set()
@@ -52,7 +57,7 @@ class SitemapApp:
         frm_threads = ttk.Frame(self.root)
         frm_threads.pack(pady=5)
         ttk.Label(frm_threads, text="執行緒數量：", font=("Segoe UI", 12)).pack(side=tk.LEFT)
-        self.combo_threads = ttk.Combobox(frm_threads, textvariable=self.num_threads, values=[1,2,3,4,5,6,7,8,9,10], width=5, state="readonly")
+        self.combo_threads = ttk.Combobox(frm_threads, textvariable=self.num_threads, values=["1","2","3","4","5","6","7","8","9","10"], width=5, state="readonly")
         self.combo_threads.pack(side=tk.LEFT, padx=5)
         # 進度條
         self.progress = ttk.Progressbar(self.root, orient="horizontal", length=540, mode="determinate")
@@ -88,6 +93,14 @@ class SitemapApp:
         self.label_sitemap.pack(side=tk.LEFT, padx=5)
         self.label_sitemap.bind("<Button-1>", self.open_sitemap_file)
         
+        # 進度檔顯示
+        frm_progress = ttk.Frame(self.root)
+        frm_progress.pack(pady=3)
+        ttk.Label(frm_progress, text="進度檔：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        self.label_progress_file = ttk.Label(frm_progress, text="--", font=("Segoe UI", 11), foreground="blue", width=60, anchor="w")
+        self.label_progress_file.pack(side=tk.LEFT, padx=5)
+        self.update_progress_file_label()
+
         # 錯誤訊息
         frm_error = ttk.Frame(self.root)
         frm_error.pack(pady=3)
@@ -97,7 +110,7 @@ class SitemapApp:
         # 按鈕區
         frm_btn = ttk.Frame(self.root)
         frm_btn.pack(pady=(22, 10))
-        self.btn_start = ttk.Button(frm_btn, text="啟動爬蟲", command=self.start_crawler, width=20)
+        self.btn_start = ttk.Button(frm_btn, text="啟動爬蟲", command=self.toggle_crawler, width=20)
         self.btn_start.pack(side=tk.LEFT, padx=12, pady=10, ipady=10)
         self.btn_stop = ttk.Button(frm_btn, text="停止爬蟲", command=self.stop_crawler, state=tk.DISABLED, width=20)
         self.btn_stop.pack(side=tk.LEFT, padx=12, pady=10, ipady=10)
@@ -108,15 +121,56 @@ class SitemapApp:
         btn_custom = ttk.Button(self.root, text="客製化設定", command=self.open_custom_settings)
         btn_custom.pack(pady=10)
 
+        # 底部小字：Sitemap.xml聰明產生器 by Colinjen88
+        frm_footer = ttk.Frame(self.root)
+        frm_footer.pack(side=tk.BOTTOM, pady=(8, 4))
+        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v1.6 by ", font=("Segoe UI", 9), fg="#888888")
+        lbl_footer.pack(side=tk.LEFT)
+        link = tk.Label(frm_footer, text="Colinjen88", font=("Segoe UI", 9, "underline"), fg="#3366cc", cursor="hand2")
+        link.pack(side=tk.LEFT)
+        def open_email(event=None):
+            import webbrowser
+            webbrowser.open("mailto:colinjen88@gmail.com")
+        link.bind("<Button-1>", open_email)
+
+    def toggle_crawler(self):
+        """統一的按鈕處理器，根據狀態決定啟動或繼續"""
+        if self.can_resume:
+            # 繼續抓取
+            self.resume_crawler()
+        else:
+            # 全新啟動
+            self.start_crawler()
+    
+    def resume_crawler(self):
+        """繼續抓取功能"""
+        self.start_crawler()
+    
     def open_sitemap_file(self, event=None):
         import os
         import webbrowser
-        sitemap_path = os.path.abspath("sitemap.xml")
-        if os.path.exists(sitemap_path):
+        # 自動尋找最新 sitemap_*.xml
+        files = [
+            f for f in os.listdir('.')
+            if f.endswith('.xml') and (f.startswith('sitemap_') or f.startswith('sitemap-'))
+        ]
+        if files:
+            latest = max(files, key=os.path.getmtime)
+            sitemap_path = os.path.abspath(latest)
             webbrowser.open(f"file://{sitemap_path}")
         else:
             from tkinter import messagebox
-            messagebox.showinfo("找不到檔案", "sitemap.xml 尚未產生")
+            messagebox.showinfo("找不到檔案", "尚未產生 sitemap_*.xml")
+
+    def update_progress_file_label(self):
+        try:
+            name = os.path.basename(self.progress_file) if self.progress_file else "--"
+            self.label_progress_file.config(text=name)
+        except Exception:
+            try:
+                self.label_progress_file.config(text="--")
+            except Exception:
+                pass
     
     def open_custom_settings(self):
         """開啟客製化設定視窗"""
@@ -540,7 +594,7 @@ class SitemapApp:
     
     def _load_config(self):
         """載入設定"""
-    config_file = "setup_rules/config.json"
+        config_file = "setup_rules/config.json"
         default_config = {
             "start_url": "https://pm.shiny.com.tw/",
             "max_workers": 3,
@@ -641,11 +695,10 @@ class SitemapApp:
             self.open_custom_settings()  # 重新開啟設定視窗
     
     def autosave_progress(self):
-    progress_file = "sitemap_crawl_temp.pkl"
+        progress_file = self.progress_file
         has_changes = False
         # 只在爬蟲運行時才執行自動儲存
         if not self.is_running:
-            # 如果爬蟲未運行，延長檢查間隔到 30 秒
             self.root.after(30000, self.autosave_progress)
             return
         if os.path.exists(progress_file):
@@ -656,21 +709,15 @@ class SitemapApp:
                 new_crawled = set(self.crawled_urls) - old_crawled
                 old_valid = set(old.get("valid_sitemap_urls", set()))
                 new_valid = set(self.valid_sitemap_urls) - old_valid
-                
-                # 只有當有新資料時才輸出詳細日誌
                 if new_crawled or new_valid:
                     has_changes = True
                     print(f"[autosave_progress] 新增 crawled_urls: {len(new_crawled)} 筆")
                     print(f"[autosave_progress] 新增 valid_sitemap_urls: {len(new_valid)} 筆")
             except Exception:
                 pass
-        
         self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
-        
         if has_changes:
-            print("[autosave_progress] 已儲存進度到 sitemap_crawl_temp.pkl")
-        
-        # 爬蟲運行時每 5 秒檢查一次，未運行時每 30 秒檢查一次
+            print(f"[autosave_progress] 已儲存進度到 {progress_file}")
         interval = 5000 if self.is_running else 30000
         self._autosave_id = self.root.after(interval, self.autosave_progress)
     def update_gui_periodically(self):
@@ -682,7 +729,7 @@ class SitemapApp:
             pass
         
         # 讀取累積進度檔
-    progress_file = "sitemap_crawl_temp.pkl"
+        progress_file = self.progress_file
         accumulated_crawled = set()
         accumulated_valid = set()
         if os.path.exists(progress_file):
@@ -727,7 +774,8 @@ class SitemapApp:
 
     def start_crawler(self):
         self.is_running = True
-        self.btn_start.config(state=tk.DISABLED)
+        self.can_resume = False  # 開始執行時重置狀態
+        self.btn_start.config(text="啟動爬蟲", state=tk.DISABLED)
         self.btn_stop.config(state=tk.NORMAL)
         self.label_status.config(text="狀態：爬蟲執行中...")
         self.progress["value"] = 0
@@ -738,12 +786,12 @@ class SitemapApp:
             self.stop_crawler()
             return
 
-    # 啟動前自動備份現有 sitemap_crawl_temp.pkl
-    progress_file = "sitemap_crawl_temp.pkl"
+        # 啟動前自動備份現有 sitemap_crawl_temp.pkl
+        progress_file = self.progress_file
         if os.path.exists(progress_file):
             idx = 2
             while True:
-                backup_file = f"sitemap_progress{idx}.pkl"
+                backup_file = f"{progress_file}.bak{idx}"
                 if not os.path.exists(backup_file):
                     import shutil
                     shutil.copyfile(progress_file, backup_file)
@@ -795,14 +843,24 @@ class SitemapApp:
 
         # 修正：將 GUI 更新操作移回主執行緒
         def on_crawler_done():
+            # 若是使用者手動停止（can_resume=True），不要覆蓋按鈕為「啟動爬蟲」
+            if self.can_resume:
+                return
             self.is_running = False
-            self.btn_start.config(state=tk.NORMAL)
+            self.can_resume = False  # 完成後重置狀態
+            self.btn_start.config(text="啟動爬蟲", state=tk.NORMAL)
             self.btn_stop.config(state=tk.DISABLED)
             self.label_status.config(text="狀態：爬取完成")
             self.progress["value"] = 100
             self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
-            self.generate_xml_file(list(self.valid_sitemap_urls))
-            # 顯示 sitemap.xml 連結
+            # 產出一份完成時的 sitemap（用預設命名規則）
+            try:
+                out_name = get_sitemap_filename()
+                self.generate_xml_file(list(self.valid_sitemap_urls), out_name)
+                self.label_sitemap.config(text=f"開啟 {out_name}", foreground="blue")
+            except Exception:
+                pass
+            # 顯示 sitemap 連結
             try:
                 self.show_sitemap_link()
             except Exception:
@@ -831,7 +889,7 @@ class SitemapApp:
                 ("Pickle files", "*.pkl"),
                 ("All files", "*.*")
             ],
-            initialfile="sitemap_crawl_temp.pkl"
+            initialfile=self.progress_file
         )
         
         if not progress_file:
@@ -863,6 +921,12 @@ class SitemapApp:
             self.label_rule_count.config(
                 text=f"商品頁: {self.rule1_count}　清單頁: {self.rule2_count}　其他頁: {self.rule3_count} (累積總數)"
             )
+            # 讀取進度後可以繼續抓取
+            self.can_resume = True
+            # 將目前使用的進度檔更新為所選檔案
+            self.progress_file = progress_file
+            self.update_progress_file_label()
+            self.btn_start.config(text="繼續抓取")
             messagebox.showinfo("成功", f"已載入進度：\n已爬取 {len(self.crawled_urls)} 個網址\n有效網址 {len(self.valid_sitemap_urls)} 個\n待爬取 {len(self.to_crawl)} 個")
         except Exception as e:
             messagebox.showerror("錯誤", f"無法讀取進度檔案：{e}")
@@ -870,7 +934,8 @@ class SitemapApp:
     def stop_crawler(self):
         # 停止爬蟲
         self.is_running = False
-        self.btn_start.config(state=tk.NORMAL)
+        self.can_resume = True  # 停止後可以繼續
+        self.btn_start.config(text="繼續抓取", state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
         self.label_status.config(text="狀態：已停止")
         if self._gui_updater_id:
@@ -888,10 +953,14 @@ class SitemapApp:
         # 如果已有有效網址，產生 sitemap 並顯示連結
         try:
             if self.valid_sitemap_urls:
-                import os
-                if not os.path.exists("sitemap.xml"):
-                    self.generate_xml_file(list(self.valid_sitemap_urls))
-                self.show_sitemap_link()
+                # 立即產出帶時間戳的 sitemap（sitemap-YYYYmmddHHMM.xml）
+                ts_name = datetime.now().strftime("sitemap-%Y%m%d%H%M.xml")
+                self.generate_xml_file(list(self.valid_sitemap_urls), ts_name)
+                # 在 GUI 顯示可點連結文字
+                try:
+                    self.label_sitemap.config(text=f"開啟 {ts_name}", foreground="blue")
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -989,7 +1058,7 @@ class SitemapApp:
             depth += 1
 
     def save_progress(self, crawled_urls, valid_sitemap_urls, to_crawl, rule1_count=0, rule2_count=0, rule3_count=0):
-    progress_file = "sitemap_crawl_temp.pkl"
+        progress_file = self.progress_file
         
         # 直接使用當前記憶體中的資料作為最新狀態，這才是正確的合併邏輯
         merged_data = {
@@ -1029,19 +1098,24 @@ class SitemapApp:
     def update_sitemap(self, valid_sitemap_urls):
         # 更新 sitemap.xml 檔案
         try:
-            self.generate_xml_file(list(valid_sitemap_urls))
-            self.label_sitemap.config(text="sitemap.xml 更新成功", foreground="green")
-            # 同步顯示可點連結
+            # 產生新 sitemap_*.xml
+            output_file = get_sitemap_filename()
+            self.generate_xml_file(list(valid_sitemap_urls), output_file)
+            self.label_sitemap.config(text=f"{output_file} 更新成功", foreground="green")
             self.show_sitemap_link()
         except Exception as e:
-            self.label_sitemap.config(text=f"sitemap.xml 更新失敗：{e}", foreground="red")
+            self.label_sitemap.config(text=f"sitemap 產生失敗:{e}", foreground="red")
 
     def show_sitemap_link(self):
         import os
-        path = os.path.abspath("sitemap.xml")
-        if os.path.exists(path):
-            # 顯示可點的連結提示文字
-            self.label_sitemap.config(text=f"開啟 sitemap.xml", foreground="blue")
+        # 顯示最新 sitemap 檔（同時支援 sitemap_ 與 sitemap- 命名）
+        files = [
+            f for f in os.listdir('.')
+            if f.endswith('.xml') and (f.startswith('sitemap_') or f.startswith('sitemap-'))
+        ]
+        if files:
+            latest = max(files, key=os.path.getmtime)
+            self.label_sitemap.config(text=f"開啟 {latest}", foreground="blue")
 
 if __name__ == "__main__":
     root = tk.Tk()
@@ -1060,3 +1134,4 @@ if __name__ == "__main__":
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
+
