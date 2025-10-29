@@ -540,7 +540,7 @@ class SitemapApp:
     
     def _load_config(self):
         """載入設定"""
-        config_file = "config.json"
+    config_file = "setup_rules/config.json"
         default_config = {
             "start_url": "https://pm.shiny.com.tw/",
             "max_workers": 3,
@@ -625,7 +625,7 @@ class SitemapApp:
             
             # 儲存到檔案
             import json
-            with open("config.json", "w", encoding="utf-8") as f:
+            with open("setup_rules/config.json", "w", encoding="utf-8") as f:
                 json.dump(new_config, f, ensure_ascii=False, indent=2)
             
             messagebox.showinfo("成功", "設定已儲存！")
@@ -641,7 +641,7 @@ class SitemapApp:
             self.open_custom_settings()  # 重新開啟設定視窗
     
     def autosave_progress(self):
-        progress_file = "sitemap_progress.pkl"
+    progress_file = "sitemap_crawl_temp.pkl"
         has_changes = False
         # 只在爬蟲運行時才執行自動儲存
         if not self.is_running:
@@ -668,7 +668,7 @@ class SitemapApp:
         self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
         
         if has_changes:
-            print("[autosave_progress] 已儲存進度到 sitemap_progress.pkl")
+            print("[autosave_progress] 已儲存進度到 sitemap_crawl_temp.pkl")
         
         # 爬蟲運行時每 5 秒檢查一次，未運行時每 30 秒檢查一次
         interval = 5000 if self.is_running else 30000
@@ -682,7 +682,7 @@ class SitemapApp:
             pass
         
         # 讀取累積進度檔
-        progress_file = "sitemap_progress.pkl"
+    progress_file = "sitemap_crawl_temp.pkl"
         accumulated_crawled = set()
         accumulated_valid = set()
         if os.path.exists(progress_file):
@@ -738,8 +738,8 @@ class SitemapApp:
             self.stop_crawler()
             return
 
-        # 啟動前自動備份現有 sitemap_progress.pkl
-        progress_file = "sitemap_progress.pkl"
+    # 啟動前自動備份現有 sitemap_crawl_temp.pkl
+    progress_file = "sitemap_crawl_temp.pkl"
         if os.path.exists(progress_file):
             idx = 2
             while True:
@@ -831,7 +831,7 @@ class SitemapApp:
                 ("Pickle files", "*.pkl"),
                 ("All files", "*.*")
             ],
-            initialfile="sitemap_progress.pkl"
+            initialfile="sitemap_crawl_temp.pkl"
         )
         
         if not progress_file:
@@ -989,7 +989,7 @@ class SitemapApp:
             depth += 1
 
     def save_progress(self, crawled_urls, valid_sitemap_urls, to_crawl, rule1_count=0, rule2_count=0, rule3_count=0):
-        progress_file = "sitemap_progress.pkl"
+    progress_file = "sitemap_crawl_temp.pkl"
         
         # 直接使用當前記憶體中的資料作為最新狀態，這才是正確的合併邏輯
         merged_data = {
