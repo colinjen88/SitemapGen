@@ -32,9 +32,9 @@ sitemap_progress/
 ├── tools/
 │   ├── remove_page1.py         # 移除 page=1 參數的工具
 │   ├── sitemap_gui.spec        # PyInstaller 打包設定檔
-│   ├── SITEMAP_RULES.md        # （已移至 Custom-made 資料夾）
+│   ├── docs/SITEMAP_RULES.md   # 規則說明文件
 Custom-made/
-├── SITEMAP_RULES.md           # 規則說明與預設網址（第一行）
+├── docs/SITEMAP_RULES.md       # 規則說明與預設網址（第一行）
 ├── URL_RULES.md               # 網址收錄規則細節
 ## Sitemap 檔案說明
 
@@ -49,7 +49,7 @@ Custom-made/
 ├── output/
 │   └── here_you_are/           # 生成的 sitemap 檔案存放處
 │       └── sitemap_20250912_094425.xml
-├── sitemap_progress.pkl         # 主要進度檔案
+├── sitemap_crawl_temp.pkl       # 主要進度暫存檔
 └── README.md                   # 本說明文件
 ```
 
@@ -111,7 +111,7 @@ python scripts/convert_progress_to_sitemap.py
    - **本次統計**：顯示本次 session 新增的網址數量
    - **累積統計**：顯示總計的網址數量
 7. **停止爬取**：可隨時點擊「停止」按鈕中斷爬取
-8. **自動保存**：程式會每5秒自動保存進度到 `sitemap_progress.pkl`
+8. **自動保存**：程式會每5秒自動保存進度到 `sitemap_crawl_temp.pkl`
 9. **生成 Sitemap**：爬取完成後自動生成 sitemap.xml
 
 ### 客製化設定說明
@@ -202,12 +202,12 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
    - **本次統計**：顯示本次 session 新增的網址數量
    - **累積統計**：顯示總計的網址數量
 6. **停止爬取**：可隨時點擊「停止」按鈕中斷爬取
-7. **自動保存**：程式會每5秒自動保存進度到 `sitemap_progress.pkl`
+7. **自動保存**：程式會每5秒自動保存進度到 `sitemap_crawl_temp.pkl`
 8. **生成 Sitemap**：爬取完成後自動生成 sitemap.xml
 
 ### 進度檔案說明
 
-- `sitemap_progress.pkl`：主要進度檔案，包含：
+- `sitemap_crawl_temp.pkl`：主要進度暫存檔，包含：
   - `crawled_urls`：已爬取的網址集合
   - `valid_sitemap_urls`：有效的 sitemap 網址集合
   - `urls_to_crawl`：待爬取的網址佇列
@@ -247,7 +247,7 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 
 - **remove_page1.py**：移除 sitemap 中 `page=1` 參數的工具
 - **sitemap_gui.spec**：PyInstaller 打包設定檔
-- **SITEMAP_RULES.md**：詳細的規則說明文件
+- **docs/SITEMAP_RULES.md**：詳細的規則說明文件
 - **build/**：編譯過程產生的臨時檔案
 - **dist/**：最終的可執行檔案
 

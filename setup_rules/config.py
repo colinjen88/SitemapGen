@@ -14,7 +14,7 @@ DEFAULT_CONFIG = {
     "MAX_DEPTH": 10,
     
     # 檔案設定
-    "PROGRESS_FILE": "sitemap_progress.pkl",
+    "PROGRESS_FILE": "sitemap_crawl_temp.pkl",
     "OUTPUT_FILE": "sitemap.xml",
     "ERROR_LOG_FILE": "error_log.txt",
     
@@ -48,7 +48,7 @@ DEFAULT_CONFIG = {
 class Config:
     """設定管理類別"""
     
-    def __init__(self, config_file="config.json"):
+    def __init__(self, config_file="setup_rules/config.json"):
         self.config_file = config_file
         self.config = DEFAULT_CONFIG.copy()
         self.load_config()

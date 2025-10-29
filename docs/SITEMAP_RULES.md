@@ -7,8 +7,8 @@
 
 ## 使用方式
 1. 修改 `sitemap_generator.py` 中的 `START_URL` 為你的網站首頁網址。
-2. 執行程式，會自動產生 sitemap_py.xml。
-3. 也可用進度檔（sitemap_progress.pkl）匯出 sitemap。
+2. 執行程式，會自動產生 sitemap.xml。
+3. 也可用進度檔（sitemap_crawl_temp.pkl）匯出 sitemap。
 
 ---
 
@@ -55,8 +55,8 @@
 ---
 
 ## 檔案說明
-- `sitemap_py.xml`：產生的 sitemap 檔案。
-- `sitemap_progress.pkl`：爬蟲進度檔，可用於匯出 sitemap。
+- `sitemap.xml`：產生的 sitemap 檔案。
+- `sitemap_crawl_temp.pkl`：爬蟲進度暫存檔，可用於匯出 sitemap。
 
 ---
 

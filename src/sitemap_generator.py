@@ -227,8 +227,8 @@ def generate_xml_file(urls):
     enable_abnormal_filter = True
     try:
         import json
-        if os.path.exists('config.json'):
-            with open('config.json', 'r', encoding='utf-8') as f:
+        if os.path.exists('setup_rules/config.json'):
+            with open('setup_rules/config.json', 'r', encoding='utf-8') as f:
                 cfg = json.load(f)
                 exclude_nonstandard_index = cfg.get('exclude_nonstandard_index_path', True)
                 enable_abnormal_filter = cfg.get('enable_abnormal_query_filter', True)
@@ -293,9 +293,9 @@ def apply_custom_rules(urls):
     import os
     
     # 讀取 config.json
-    config_file = "config.json"
+    config_file = "setup_rules/config.json"
     if not os.path.exists(config_file):
-        # 如果沒有 config.json，使用舊的邏輯
+    # 如果沒有 setup_rules/config.json，使用舊的邏輯
         return remove_menu_page1(urls)
     
     try:
@@ -485,6 +485,6 @@ def export_sitemap_with_priority_from_progress(progress_pkl_path, output_dir="."
 
 if __name__ == "__main__":
     # 預設直接匯出進度檔內容
-    export_sitemap_with_priority_from_progress("sitemap_progress.pkl", output_dir="here_you_are")
+    export_sitemap_with_priority_from_progress("sitemap_crawl_temp.pkl", output_dir="autosave")
 
 
