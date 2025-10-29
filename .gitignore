@@ -1,3 +1,7 @@
+dist/
+build/
+__pycache__/
+*.spec
 # Python cache and compiled files
 __pycache__/
 *.pyc
