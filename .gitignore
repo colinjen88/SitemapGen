@@ -19,3 +19,7 @@ Thumbs.db
 .env
 *.env
 setup_rules/config.json
+
+# Output files
+*.xml
+*.pkl

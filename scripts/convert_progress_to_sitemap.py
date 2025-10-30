@@ -4,7 +4,7 @@ import sys
 import os
 from datetime import datetime
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
-from src.sitemap_generator import create_sitemap, get_sitemap_filename
+from src.sitemap_generator import generate_xml_file, get_sitemap_filename
 
 # 自動尋找最新 crawl_temp_*.pkl
 def find_latest_progress():
@@ -20,7 +20,7 @@ with open(progress_file, 'rb') as f:
 valid_urls = list(data.get('valid_sitemap_urls', []))
 print(f"共 {len(valid_urls)} 個有效網址 (來源: {progress_file})")
 
-# 產生 sitemap_+完成時間+.xml
+# 產生 sitemap_+完成時間+.xml（含權重與完整過濾規則）
 output_file = get_sitemap_filename()
-create_sitemap(valid_urls, output_file)
+generate_xml_file(valid_urls, output_file)
 print(f"已產生 {output_file}")
