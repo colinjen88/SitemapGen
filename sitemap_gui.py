@@ -53,32 +53,38 @@ class SitemapApp:
         self.entry_url = ttk.Entry(frm_url, width=52, font=("Segoe UI", 12))
         self.entry_url.pack(side=tk.LEFT, padx=5)
         self.entry_url.insert(0, "https://pm.shiny.com.tw/")
-        # 執行緒數量選擇
-        frm_threads = ttk.Frame(self.root)
-        frm_threads.pack(pady=5)
-        ttk.Label(frm_threads, text="執行緒數量：", font=("Segoe UI", 12)).pack(side=tk.LEFT)
-        self.combo_threads = ttk.Combobox(frm_threads, textvariable=self.num_threads, values=["1","2","3","4","5","6","7","8","9","10"], width=5, state="readonly")
+        # 執行緒數量 + 客製化設定在同一排
+        frm_top = ttk.Frame(self.root)
+        frm_top.pack(pady=5)
+        ttk.Label(frm_top, text="執行緒數量：", font=("Segoe UI", 12)).pack(side=tk.LEFT)
+        self.combo_threads = ttk.Combobox(frm_top, textvariable=self.num_threads, values=["1","2","3","4","5","6","7","8","9","10"], width=5, state="readonly")
         self.combo_threads.pack(side=tk.LEFT, padx=5)
-        # 進度條
-        self.progress = ttk.Progressbar(self.root, orient="horizontal", length=540, mode="determinate")
-        self.progress.pack(pady=6)
+        btn_custom = ttk.Button(frm_top, text="客製化設定", command=self.open_custom_settings)
+        btn_custom.pack(side=tk.LEFT, padx=14)
+        # 進度條動畫 Canvas
+        self.progress_canvas = tk.Canvas(self.root, width=540, height=24, bg='#e6e6e6', highlightthickness=0)
+        self.progress_canvas.pack(pady=8)
+        self._scan_anim_offset = 0
+        self._scan_anim_job = self.root.after(50, self._animate_scanning_bar)
         # 狀態顯示
         self.label_status = ttk.Label(self.root, text="狀態：等待啟動", font=("Segoe UI", 12), foreground="black")
         self.label_status.pack(pady=6)
-        # 進度統計
-        self.label_stats = ttk.Label(self.root, text="本次已爬：0　有效：0　待爬：0\n累積已爬：0　累積有效：0", font=("Segoe UI", 13, "bold"), background="#f8f8f8", foreground="#2a4d8f")
+        # 新增_爬取檔案即時區（約6行高度）
+        frm_list = ttk.Frame(self.root)
+        frm_list.pack(pady=3)
+        self.crawl_file_list = tk.Text(frm_list, height=6, width=80, font=("Consolas", 10), state="disabled", bg="#f4f4f4")
+        self.crawl_file_list.pack(side=tk.LEFT)
+        scrollbar = ttk.Scrollbar(frm_list, orient="vertical", command=self.crawl_file_list.yview)
+        scrollbar.pack(side=tk.RIGHT, fill="y")
+        self.crawl_file_list.configure(yscrollcommand=scrollbar.set)
+        # 統一累積/本次統計於一排
+        self.label_stats = ttk.Label(self.root, text="【進度報告】已爬：0 | 有效：0 | 商品頁：0 | 清單頁：0 | 其他頁：0", font=("Segoe UI", 13, "bold"), background="#f8f8f8", foreground="#2a4d8f")
         self.label_stats.pack(pady=8)
         # 三種規則頁面數量顯示
         frm_rule = ttk.Frame(self.root)
         frm_rule.pack(pady=3)
         self.label_rule_count = ttk.Label(frm_rule, text="商品頁: 0　清單頁: 0　其他頁: 0", font=("Segoe UI", 12), foreground="blue", width=60, anchor="w")
         self.label_rule_count.pack(side=tk.LEFT, padx=5)
-        # 分散式進度
-        frm_dist = ttk.Frame(self.root)
-        frm_dist.pack(pady=3)
-        ttk.Label(frm_dist, text="分散式進度：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_dist = ttk.Label(frm_dist, text="--", font=("Segoe UI", 11), foreground="purple", width=60, anchor="w")
-        self.label_dist.pack(side=tk.LEFT, padx=5)
         # robots.txt 狀態
         frm_robots = ttk.Frame(self.root)
         frm_robots.pack(pady=3)
@@ -97,7 +103,7 @@ class SitemapApp:
         frm_progress = ttk.Frame(self.root)
         frm_progress.pack(pady=3)
         ttk.Label(frm_progress, text="進度檔：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_progress_file = ttk.Label(frm_progress, text="--", font=("Segoe UI", 11), foreground="blue", width=60, anchor="w")
+        self.label_progress_file = ttk.Label(frm_progress, text="--", font=("Segoe UI", 11), foreground="#888888", width=60, anchor="w")
         self.label_progress_file.pack(side=tk.LEFT, padx=5)
         self.update_progress_file_label()
 
@@ -118,13 +124,13 @@ class SitemapApp:
         self.btn_load_progress.pack(side=tk.LEFT, padx=12, pady=10, ipady=10)
         
         # 客製化設定按鈕（移到下方）
-        btn_custom = ttk.Button(self.root, text="客製化設定", command=self.open_custom_settings)
-        btn_custom.pack(pady=10)
+        # btn_custom = ttk.Button(self.root, text="客製化設定", command=self.open_custom_settings)
+        # btn_custom.pack(pady=10)
 
         # 底部小字：Sitemap.xml聰明產生器 by Colinjen88
         frm_footer = ttk.Frame(self.root)
         frm_footer.pack(side=tk.BOTTOM, pady=(8, 4))
-        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v1.6_fixed by ", font=("Segoe UI", 9), fg="#888888")
+        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v2.0 by ", font=("Segoe UI", 9), fg="#888888")
         lbl_footer.pack(side=tk.LEFT)
         link = tk.Label(frm_footer, text="Colinjen88", font=("Segoe UI", 9, "underline"), fg="#3366cc", cursor="hand2")
         link.pack(side=tk.LEFT)
@@ -720,65 +726,81 @@ class SitemapApp:
             print(f"[autosave_progress] 已儲存進度到 {progress_file}")
         interval = 5000 if self.is_running else 30000
         self._autosave_id = self.root.after(interval, self.autosave_progress)
+    def update_stats_label(self):
+        # 只顯示累積統計，用當前資料
+        self.label_stats.config(
+            text=f"【進度報告】已爬：{len(self.crawled_urls)} | 有效：{len(self.valid_sitemap_urls)} | 商品頁：{self.rule1_count} | 清單頁：{self.rule2_count} | 其他頁：{self.rule3_count}")
+
     def update_gui_periodically(self):
-        """定期更新 GUI 顯示"""
-        # 更新進度條
-        try:
-            self.progress.config(value=len(self.crawled_urls))
-        except:
-            pass
-        
-        # 讀取累積進度檔
-        progress_file = self.progress_file
-        accumulated_crawled = set()
-        accumulated_valid = set()
-        if os.path.exists(progress_file):
-            try:
-                with open(progress_file, "rb") as f:
-                    data = pickle.load(f)
-                    accumulated_crawled = set(data.get("crawled_urls", set()))
-                    accumulated_valid = set(data.get("valid_sitemap_urls", set()))
-            except Exception:
-                pass
-        
-        # 計算統計數字（確保不為負數）
-        session_crawled = max(0, len(self.crawled_urls) - len(self.session_start_crawled))
-        session_valid = max(0, len(self.valid_sitemap_urls) - len(self.session_start_valid))
-        remaining = len(self.to_crawl)
-        
-        # 更新統計標籤
-        try:
-            self.label_stats.config(
-                text=f"本次已爬：{session_crawled}　有效：{session_valid}　待爬：{remaining}\n累積已爬：{len(accumulated_crawled)}　累積有效：{len(accumulated_valid)}"
-            )
-        except:
-            pass
-        
-        # 更新規則計數顯示（顯示本次增加的數量）
-        try:
-            session_rule1 = self.rule1_count - getattr(self, 'session_start_rule1', 0)
-            session_rule2 = self.rule2_count - getattr(self, 'session_start_rule2', 0)
-            session_rule3 = self.rule3_count - getattr(self, 'session_start_rule3', 0)
-            self.label_rule_count.config(
-                text=f"商品頁: {max(0, session_rule1)}　清單頁: {max(0, session_rule2)}　其他頁: {max(0, session_rule3)} (本次)"
-            )
-        except:
-            pass
-        
-        # 繼續定期更新
+        self.update_stats_label()
         if self.is_running:
             self._gui_updater_id = self.root.after(1000, self.update_gui_periodically)
 
+    def _start_scan_animation(self):
+        if not hasattr(self, '_scan_anim_job') or self._scan_anim_job is None:
+            self._init_beam_states()
+            self._scan_anim_job = self.root.after(33, self._animate_scanning_bar)
 
+    def _stop_scan_animation(self):
+        if hasattr(self, '_scan_anim_job') and self._scan_anim_job:
+            self.root.after_cancel(self._scan_anim_job)
+            self._scan_anim_job = None
+
+    def _init_beam_states(self):
+        self._scan_beam_count = max(1, self.num_threads.get() if hasattr(self, 'num_threads') else 1)
+        self._scan_beam_offset = 0
+        self._scan_beam_dir = 1
+
+    def _animate_scanning_bar(self):
+        if not getattr(self, 'is_running', False):
+            self._scan_anim_job = None
+            return
+        width = 540
+        height = 24
+        rect_width = 18
+        beam_count = getattr(self, '_scan_beam_count', 1)
+        gap = 18
+        total_length = beam_count * rect_width + (beam_count - 1) * gap
+        speed = 10
+        max_offset = width - total_length
+        offset = self._scan_beam_offset
+        dir = self._scan_beam_dir
+        # 畫同步移動的 beams
+        self.progress_canvas.delete("all")
+        for i in range(beam_count):
+            x0 = offset + i * (rect_width + gap)
+            if 0 <= x0 < width:
+                self.progress_canvas.create_rectangle(x0, 3, x0 + rect_width, height - 3, fill="#97ee7d", outline="", width=0)
+        # bounce 邏輯
+        offset += speed * dir
+        if offset > max_offset:
+            offset = max_offset
+            dir = -1
+        if offset < 0:
+            offset = 0
+            dir = 1
+        self._scan_beam_offset = offset
+        self._scan_beam_dir = dir
+        self._scan_anim_job = self.root.after(33, self._animate_scanning_bar)
 
 
     def start_crawler(self):
+        if self.is_running:
+            return
         self.is_running = True
+
+        self.btn_start.config(state=tk.DISABLED)
+        self.btn_stop.config(state=tk.NORMAL)
+        self.btn_load_progress.config(state=tk.DISABLED)
+        self.combo_threads.config(state='disabled')
+        self._start_scan_animation()
         self.can_resume = False  # 開始執行時重置狀態
         self.btn_start.config(text="啟動爬蟲", state=tk.DISABLED)
         self.btn_stop.config(state=tk.NORMAL)
         self.label_status.config(text="狀態：爬蟲執行中...")
-        self.progress["value"] = 0
+        # 進度條動畫進度值已不需要任何百分比設置或變更
+        # self.progress["value"] = 0
+        # self.progress["value"] = 100
 
         start_url = self.entry_url.get().strip()
         if not start_url:
@@ -820,6 +842,9 @@ class SitemapApp:
             self.rule2_count = data.get("rule2_count", 0)
             self.rule3_count = data.get("rule3_count", 0)
 
+        def crawling_url_callback(url):
+            self.show_crawling_url(url)
+
         num_threads = self.num_threads.get()
         def run_crawler_with_threads():
             if not self.is_running:
@@ -835,7 +860,7 @@ class SitemapApp:
                 "rule3_count": self.rule3_count,
             }
             # 修正：傳入 initial_state
-            self.run_crawler(start_url, progress_callback, num_threads, lambda: self.is_running, initial_state=initial_state)
+            self.run_crawler(start_url, progress_callback, num_threads, lambda: self.is_running, initial_state=initial_state, crawling_url_callback=crawling_url_callback)
 
         t = threading.Thread(target=run_crawler_with_threads)
         self.threads = [t]
@@ -843,16 +868,20 @@ class SitemapApp:
 
         # 修正：將 GUI 更新操作移回主執行緒
         def on_crawler_done():
-            # 若是使用者手動停止（can_resume=True），不要覆蓋按鈕為「啟動爬蟲」
+            # 若是使用者手動停止，狀態已在 stop_crawler 設定，這裡直接 return
             if self.can_resume:
                 return
+            
             self.is_running = False
-            self.can_resume = False  # 完成後重置狀態
+            self.can_resume = False
+            self.combo_threads.config(state='readonly')
             self.btn_start.config(text="啟動爬蟲", state=tk.NORMAL)
             self.btn_stop.config(state=tk.DISABLED)
+            self.btn_load_progress.config(state=tk.NORMAL)
             self.label_status.config(text="狀態：爬取完成")
-            self.progress["value"] = 100
-            self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
+            self.btn_start.config(text="啟動爬蟲", state=tk.NORMAL)
+            self.btn_stop.config(state=tk.DISABLED)
+            self.btn_load_progress.config(state=tk.NORMAL)
             # 產出一份完成時的 sitemap（用預設命名規則）
             try:
                 out_name = get_sitemap_filename()
@@ -916,10 +945,10 @@ class SitemapApp:
             self.session_start_rule3 = self.rule3_count
             # 更新顯示
             self.label_stats.config(
-                text=f"本次已爬：0　有效：0　待爬：{len(self.to_crawl)}\n累積已爬：{len(self.crawled_urls)}　累積有效：{len(self.valid_sitemap_urls)}"
+                text=f"本次已爬：0 | 有效：0 | 商品頁：0 | 清單頁：0 | 其他頁：0"
             )
             self.label_rule_count.config(
-                text=f"商品頁: {self.rule1_count}　清單頁: {self.rule2_count}　其他頁: {self.rule3_count} (累積總數)"
+                text=f"商品頁: {self.rule1_count} | 清單頁：{self.rule2_count} | 其他頁：{self.rule3_count} (累積總數)"
             )
             # 讀取進度後可以繼續抓取
             self.can_resume = True
@@ -932,8 +961,15 @@ class SitemapApp:
             messagebox.showerror("錯誤", f"無法讀取進度檔案：{e}")
 
     def stop_crawler(self):
-        # 停止爬蟲
+        if not self.is_running:
+            return
         self.is_running = False
+
+        self.btn_start.config(text="繼續抓取", state=tk.NORMAL)
+        self.btn_stop.config(state=tk.DISABLED)
+        self.btn_load_progress.config(state=tk.NORMAL)
+        self.combo_threads.config(state='readonly')
+        self._stop_scan_animation()
         self.can_resume = True  # 停止後可以繼續
         self.btn_start.config(text="繼續抓取", state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
@@ -950,6 +986,8 @@ class SitemapApp:
             if t.is_alive():
                 t.join(timeout=2)
         self.threads = []
+        self.btn_start.config(text="繼續抓取", state=tk.NORMAL)
+        self.btn_load_progress.config(state=tk.NORMAL)
         # 如果已有有效網址，產生 sitemap 並顯示連結
         try:
             if self.valid_sitemap_urls:
@@ -1116,6 +1154,20 @@ class SitemapApp:
         if files:
             latest = max(files, key=os.path.getmtime)
             self.label_sitemap.config(text=f"開啟 {latest}", foreground="blue")
+
+    def show_crawling_url(self, url):
+        # 追加顯示目前爬網址 tip，最多保留30條
+        def do_update():
+            self.crawl_file_list['state'] = 'normal'
+            lines = self.crawl_file_list.get('1.0','end').splitlines()
+            lines.append(url)
+            if len(lines)>30:
+                lines = lines[-30:]
+            self.crawl_file_list.delete('1.0', 'end')
+            self.crawl_file_list.insert('1.0', '\n'.join(lines))
+            self.crawl_file_list['state'] = 'disabled'
+            self.crawl_file_list.see('end')
+        self.root.after(0, do_update)
 
 if __name__ == "__main__":
     root = tk.Tk()

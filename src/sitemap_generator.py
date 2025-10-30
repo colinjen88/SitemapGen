@@ -48,7 +48,7 @@ def create_sitemap(valid_sitemap_urls, output_filename=None):
     except Exception as e:
         print(f"Sitemap 檔案更新失敗: {e}")
 
-def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_func=None, initial_state=None):
+def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_func=None, initial_state=None, crawling_url_callback=None):
     """
     爬取網站並即時回報進度，結束後自動產生 sitemap.xml
     """
@@ -159,9 +159,10 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
             urls_to_crawl.clear()
             futures = []
             for url in batch:
-                # 新增：分派前檢查是否要停止
                 if is_running_func and not is_running_func():
                     break
+                if crawling_url_callback:
+                    crawling_url_callback(url)
                 futures.append(executor.submit(crawl_url, url))
             for future in as_completed(futures):
                 # 新增：處理結果前檢查是否要停止
