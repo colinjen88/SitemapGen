@@ -4,7 +4,7 @@ from datetime import datetime
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
-from src.sitemap_generator import create_sitemap, run_crawler, get_progress_filename, get_sitemap_filename
+from src.sitemap_generator import generate_xml_file, run_crawler, get_progress_filename, get_sitemap_filename
 import threading
 import time
 from tkinter import ttk, messagebox
@@ -19,7 +19,7 @@ def get_gui_progress_file():
 
 class SitemapApp:
     def __init__(self, root):
-        self.generate_xml_file = create_sitemap
+        self.generate_xml_file = generate_xml_file
         self.run_crawler = run_crawler
         self.progress_file = get_gui_progress_file()
 
@@ -124,7 +124,7 @@ class SitemapApp:
         # 底部小字：Sitemap.xml聰明產生器 by Colinjen88
         frm_footer = ttk.Frame(self.root)
         frm_footer.pack(side=tk.BOTTOM, pady=(8, 4))
-        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v1.6 by ", font=("Segoe UI", 9), fg="#888888")
+        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v1.6_fixed by ", font=("Segoe UI", 9), fg="#888888")
         lbl_footer.pack(side=tk.LEFT)
         link = tk.Label(frm_footer, text="Colinjen88", font=("Segoe UI", 9, "underline"), fg="#3366cc", cursor="hand2")
         link.pack(side=tk.LEFT)

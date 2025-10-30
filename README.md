@@ -1,3 +1,7 @@
+# SitemapGen 是一款自動產生網站 Sitemap.xml 的工具，支援自訂規則與批次處理，適用於網站管理與 SEO。
+
+SitemapGen is a tool for automated generation of website Sitemap.xml, supporting custom rules and batch processing for site management and SEO.
+
 # 最新專案狀態（2025/10/28）
 
 - 已完成 sitemap 產生與主程式（sitemap_gui.py）測試，運作正常。

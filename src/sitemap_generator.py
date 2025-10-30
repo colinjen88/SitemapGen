@@ -39,8 +39,10 @@ def create_sitemap(valid_sitemap_urls, output_filename=None):
         with open(output_filename, "w", encoding="utf-8") as f:
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
             f.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+            from xml.sax.saxutils import escape
             for url in valid_sitemap_urls:
-                f.write(f'  <url><loc>{url}</loc></url>\n')
+                url_escaped = escape(url)
+                f.write(f'  <url><loc>{url_escaped}</loc></url>\n')
             f.write('</urlset>\n')
         print(f"--- Sitemap 已成功生成: {output_filename} ---")
     except Exception as e:
@@ -267,6 +269,7 @@ def generate_xml_file(urls, output_filename=None):
     xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
 
     url_list = sorted(list(urls), key=lambda x: (0 if x == homepage else 1, x))
+    from xml.sax.saxutils import escape
     for url in url_list:
         # 權重規則
         if url == homepage:
@@ -291,8 +294,9 @@ def generate_xml_file(urls, output_filename=None):
         else:
             priority = '0.7'
 
+        url_escaped = escape(url)
         xml_content += '  <url>\n'
-        xml_content += f'    <loc>{url}</loc>\n'
+        xml_content += f'    <loc>{url_escaped}</loc>\n'
         xml_content += f'    <priority>{priority}</priority>\n'
         xml_content += '  </url>\n'
 
