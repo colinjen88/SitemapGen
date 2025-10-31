@@ -129,7 +129,7 @@ class SitemapApp:
         # 底部小字：Sitemap.xml聰明產生器 by Colinjen88
         frm_footer = ttk.Frame(self.root)
         frm_footer.pack(side=tk.BOTTOM, pady=(8, 4))
-        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v2.1 by ", font=("Segoe UI", 9), fg="#888888")
+        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v2.11 by ", font=("Segoe UI", 9), fg="#888888")
         lbl_footer.pack(side=tk.LEFT)
         link = tk.Label(frm_footer, text="Colinjen88", font=("Segoe UI", 9, "underline"), fg="#3366cc", cursor="hand2")
         link.pack(side=tk.LEFT)
