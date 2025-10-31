@@ -211,7 +211,9 @@ def generate_xml_file(urls, output_filename=None):
         return
 
     if output_filename is None:
-        output_filename = "sitemap.xml"
+        # 預設存到 autosave/sitemap.xml
+        os.makedirs("autosave", exist_ok=True)
+        output_filename = os.path.join("autosave", "sitemap.xml")
 
     homepage = START_URL if START_URL.endswith('/') else START_URL + '/'
     homepage_variants = {

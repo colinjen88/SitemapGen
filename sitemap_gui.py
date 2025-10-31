@@ -130,7 +130,7 @@ class SitemapApp:
         # 底部小字：Sitemap.xml聰明產生器 by Colinjen88
         frm_footer = ttk.Frame(self.root)
         frm_footer.pack(side=tk.BOTTOM, pady=(8, 4))
-        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v2.0 by ", font=("Segoe UI", 9), fg="#888888")
+        lbl_footer = tk.Label(frm_footer, text="Sitemap.xml聰明產生器v2.1 by ", font=("Segoe UI", 9), fg="#888888")
         lbl_footer.pack(side=tk.LEFT)
         link = tk.Label(frm_footer, text="Colinjen88", font=("Segoe UI", 9, "underline"), fg="#3366cc", cursor="hand2")
         link.pack(side=tk.LEFT)
@@ -141,11 +141,14 @@ class SitemapApp:
 
     def toggle_crawler(self):
         """統一的按鈕處理器，根據狀態決定啟動或繼續"""
+        self.btn_start.config(state=tk.DISABLED)
+
+        if self.is_running:
+            return
+
         if self.can_resume:
-            # 繼續抓取
             self.resume_crawler()
         else:
-            # 全新啟動
             self.start_crawler()
     
     def resume_crawler(self):
@@ -789,7 +792,6 @@ class SitemapApp:
             return
         self.is_running = True
 
-        self.btn_start.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.NORMAL)
         self.btn_load_progress.config(state=tk.DISABLED)
         self.combo_threads.config(state='disabled')
@@ -808,14 +810,25 @@ class SitemapApp:
             self.stop_crawler()
             return
 
-        # 啟動前自動備份現有 sitemap_crawl_temp.pkl
+        # 啟動前自動備份現有進度檔（只保留最新的 3 個備份）
         progress_file = self.progress_file
         if os.path.exists(progress_file):
+            import shutil
+            import glob
+            # 找出所有現有的備份檔
+            backup_files = sorted(glob.glob(f"{progress_file}.bak*"), key=os.path.getmtime)
+            # 只保留最新的 2 個，刪除更舊的
+            if len(backup_files) > 2:
+                for old_backup in backup_files[:-2]:
+                    try:
+                        os.remove(old_backup)
+                    except Exception:
+                        pass
+            # 創建新備份
             idx = 2
             while True:
                 backup_file = f"{progress_file}.bak{idx}"
                 if not os.path.exists(backup_file):
-                    import shutil
                     shutil.copyfile(progress_file, backup_file)
                     break
                 idx += 1
@@ -879,9 +892,6 @@ class SitemapApp:
             self.btn_stop.config(state=tk.DISABLED)
             self.btn_load_progress.config(state=tk.NORMAL)
             self.label_status.config(text="狀態：爬取完成")
-            self.btn_start.config(text="啟動爬蟲", state=tk.NORMAL)
-            self.btn_stop.config(state=tk.DISABLED)
-            self.btn_load_progress.config(state=tk.NORMAL)
             # 產出一份完成時的 sitemap（用預設命名規則）
             try:
                 out_name = get_sitemap_filename()
@@ -956,6 +966,7 @@ class SitemapApp:
             self.progress_file = progress_file
             self.update_progress_file_label()
             self.btn_start.config(text="繼續抓取")
+            self.is_running = False
             messagebox.showinfo("成功", f"已載入進度：\n已爬取 {len(self.crawled_urls)} 個網址\n有效網址 {len(self.valid_sitemap_urls)} 個\n待爬取 {len(self.to_crawl)} 個")
         except Exception as e:
             messagebox.showerror("錯誤", f"無法讀取進度檔案：{e}")
@@ -965,14 +976,12 @@ class SitemapApp:
             return
         self.is_running = False
 
-        self.btn_start.config(text="繼續抓取", state=tk.NORMAL)
-        self.btn_stop.config(state=tk.DISABLED)
-        self.btn_load_progress.config(state=tk.NORMAL)
         self.combo_threads.config(state='readonly')
         self._stop_scan_animation()
         self.can_resume = True  # 停止後可以繼續
         self.btn_start.config(text="繼續抓取", state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
+        self.btn_load_progress.config(state=tk.NORMAL)
         self.label_status.config(text="狀態：已停止")
         if self._gui_updater_id:
             self.root.after_cancel(self._gui_updater_id)
@@ -986,8 +995,6 @@ class SitemapApp:
             if t.is_alive():
                 t.join(timeout=2)
         self.threads = []
-        self.btn_start.config(text="繼續抓取", state=tk.NORMAL)
-        self.btn_load_progress.config(state=tk.NORMAL)
         # 如果已有有效網址，產生 sitemap 並顯示連結
         try:
             if self.valid_sitemap_urls:
@@ -1055,9 +1062,9 @@ class SitemapApp:
                 with open(file_name, "w", encoding="utf-8") as f:
                     f.write(content)
 
-                # 更新 sitemap.xml
+                # 只將 URL 加入集合，不立即更新 sitemap.xml（避免產生大量檔案）
                 valid_sitemap_urls.add(url)
-                self.update_sitemap(valid_sitemap_urls)
+                # self.update_sitemap(valid_sitemap_urls)  # 已移除：避免每次爬取都產生新 XML
 
             except Exception as e:
                 return str(e)
@@ -1134,10 +1141,11 @@ class SitemapApp:
             print(f"無法寫入錯誤日誌: {e}")
 
     def update_sitemap(self, valid_sitemap_urls):
-        # 更新 sitemap.xml 檔案
+        # 更新 sitemap.xml 檔案（已停用頻繁更新，避免產生大量檔案）
+        # 此函式保留以備將來需要，但現在不會自動頻繁呼叫
         try:
-            # 產生新 sitemap_*.xml
-            output_file = get_sitemap_filename()
+            # 使用固定檔名 sitemap_latest.xml，避免產生大量時間戳檔案
+            output_file = "sitemap_latest.xml"
             self.generate_xml_file(list(valid_sitemap_urls), output_file)
             self.label_sitemap.config(text=f"{output_file} 更新成功", foreground="green")
             self.show_sitemap_link()

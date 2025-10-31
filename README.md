@@ -1,6 +1,8 @@
+
 # SitemapGen 是一款自動產生網站 Sitemap.xml 的工具，支援自訂規則與批次處理，適用於網站管理與 SEO。
 
 SitemapGen is a tool for automated generation of website Sitemap.xml, supporting custom rules and batch processing for site management and SEO.
+
 
 # 最新專案狀態（2025/10/28）
 
@@ -14,6 +16,7 @@ SitemapGen is a tool for automated generation of website Sitemap.xml, supporting
 ((這是寫給現在公司用的, 專屬客製化爬蟲工具))
 這是一個自動化網站爬蟲工具，專門用於生成符合 SEO 標準的 sitemap_YYYYmmdd_HHMMSS.xml 檔案。程式會自動爬取指定網站，依據預設規則篩選有效網址，並產生結構化的 sitemap 檔案。
 
+
 ## 主要功能
 
 - **自動網站爬取**：從指定起始網址開始，自動發現並爬取所有相關頁面
@@ -21,11 +24,11 @@ SitemapGen is a tool for automated generation of website Sitemap.xml, supporting
 - **權重設定**：根據頁面類型自動設定適當的 priority 值
 - **進度保存**：支援中斷後續爬取，避免重複工作
 - **GUI 介面**：提供友善的圖形化操作介面
+- **進度條動畫**：進度條以 Canvas 呈現，根據執行緒數顯示多個色塊，每個色塊獨立循環移動，動態反映多執行緒狀態
 - **批次處理**：支援大量網址的高效處理
 
 ## 檔案結構
 
-```
 SitemapGen/
 ├── sitemap_gui.py                  # 主程式（GUI 介面）
 ├── src/
@@ -60,6 +63,42 @@ SitemapGen/
 └── README.md                       # 本說明文件
 ```
 
+```
+SitemapGen/
+├── sitemap_gui.py                  # 主程式（GUI 介面）
+├── src/
+│   ├── __init__.py
+│   └── sitemap_generator.py        # 核心爬蟲引擎
+├── scripts/
+│   ├── convert_progress_to_sitemap.py      # 進度轉換腳本
+│   └── convert_progress_to_sitemap_ok.py   # 進度轉換腳本（已驗證）
+├── tools/
+│   ├── remove_page1.py             # 移除 page=1 參數的工具
+│   ├── sitemap_gui.spec            # PyInstaller 打包設定檔
+│   └── build/
+│       └── sitemap_gui/            # 編譯產物
+├── Custom-made/
+│   ├── SITEMAP_RULES.md            # 規則說明與預設網址
+│   └── URL_RULES.md                # 網址收錄規則細節
+├── docs/
+│   ├── 快速使用說明.md
+│   ├── OPTIMIZATION_SUMMARY.md
+│   ├── SITEMAP_RULES.md
+│   ├── SEO排除收錄規則與網址列表.md
+│   └── 修正紀錄_SitemapGen_GUI啟動錯誤.md
+├── setup_rules/
+│   ├── config.json                 # 客製化設定檔
+│   └── config.py
+├── autosave/
+│   ├── sitemap_YYYYmmdd_HHMMSS.xml # 自動產生的 sitemap 檔案
+│   └── sitemap.xml                 # 暫存檔案，每次爬蟲結束自動覆蓋，僅供快速檢查
+├── output/
+│   └── here_you_are/
+│       └── sitemap_YYYYmmdd_HHMMSS.xml     # 歷史產出檔案
+├── crawl_temp_YYYYmmdd_HHMMSS.pkl         # 進度暫存檔（每次啟動自動命名）
+└── README.md                       # 本說明文件
+```
+
 ## 檔案命名規則
 
 ### 進度檔案
@@ -67,18 +106,22 @@ SitemapGen/
 - **說明**：每次啟動程式時自動產生，避免覆蓋之前的進度
 - **範例**：`crawl_temp_20251029_140000.pkl`
 
+
 ### Sitemap 檔案
-- **格式**：`sitemap_YYYYmmdd_HHMMSS.xml`
+- **正式檔案格式**：`sitemap_YYYYmmdd_HHMMSS.xml`
 - **說明**：每次產生時自動命名，避免覆蓋之前的檔案
 - **範例**：`sitemap_20251029_153000.xml`
+- **暫存檔案**：`autosave/sitemap.xml`，每次爬蟲結束自動覆蓋，僅供快速檢查，不影響正式輸出
 
 ### 自動保存機制
 - **進度檔案**：每5秒自動保存到 `crawl_temp_YYYYmmdd_HHMMSS.pkl`
 - **Sitemap 檔案**：爬取完成後自動產生 `sitemap_YYYYmmdd_HHMMSS.xml`
 
-### 操作流程補充
+
+## 操作流程補充
 - **自動保存**：每次啟動自動產生新進度檔，並每5秒自動保存
 - **生成 Sitemap**：每次產生新檔案，檔名自動帶時間戳
+- **進度條動畫**：啟動爬蟲後，進度條會根據所選執行緒數顯示多個色塊，每個色塊獨立循環移動，動態顯示多執行緒運作情形
 - **檔案管理**：所有檔案都採用時間戳命名，避免覆蓋，便於版本管理
 
 ## 快速開始
