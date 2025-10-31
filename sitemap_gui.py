@@ -80,17 +80,16 @@ class SitemapApp:
         # 統一累積/本次統計於一排
         self.label_stats = ttk.Label(self.root, text="【進度報告】已爬：0 | 有效：0 | 商品頁：0 | 清單頁：0 | 其他頁：0", font=("Segoe UI", 13, "bold"), background="#f8f8f8", foreground="#2a4d8f")
         self.label_stats.pack(pady=8)
-        # 三種規則頁面數量顯示
-        frm_rule = ttk.Frame(self.root)
-        frm_rule.pack(pady=3)
-        self.label_rule_count = ttk.Label(frm_rule, text="商品頁: 0　清單頁: 0　其他頁: 0", font=("Segoe UI", 12), foreground="blue", width=60, anchor="w")
-        self.label_rule_count.pack(side=tk.LEFT, padx=5)
         # robots.txt 狀態
         frm_robots = ttk.Frame(self.root)
         frm_robots.pack(pady=3)
         ttk.Label(frm_robots, text="robots.txt 狀態：", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-        self.label_robots = ttk.Label(frm_robots, text="--", font=("Segoe UI", 11), foreground="blue", width=60, anchor="w")
+        self.label_robots = ttk.Label(frm_robots, text="--", font=("Segoe UI", 11), foreground="blue", width=60, anchor="w", cursor="hand2")
         self.label_robots.pack(side=tk.LEFT, padx=5)
+        self.label_robots.bind("<Button-1>", self.open_robots_url)
+        self._robots_url = None
+        self._robots_text = None
+        self._robots_summary = None
         # sitemap.xml 狀態
         frm_sitemap = ttk.Frame(self.root)
         frm_sitemap.pack(pady=3)
@@ -810,6 +809,12 @@ class SitemapApp:
             self.stop_crawler()
             return
 
+        # 嘗試更新 robots.txt 狀態
+        try:
+            self.update_robots_status(start_url)
+        except Exception:
+            pass
+
         # 啟動前自動備份現有進度檔（只保留最新的 3 個備份）
         progress_file = self.progress_file
         if os.path.exists(progress_file):
@@ -955,10 +960,7 @@ class SitemapApp:
             self.session_start_rule3 = self.rule3_count
             # 更新顯示
             self.label_stats.config(
-                text=f"本次已爬：0 | 有效：0 | 商品頁：0 | 清單頁：0 | 其他頁：0"
-            )
-            self.label_rule_count.config(
-                text=f"商品頁: {self.rule1_count} | 清單頁：{self.rule2_count} | 其他頁：{self.rule3_count} (累積總數)"
+                text=f"本次已爬：0 | 有效：0"
             )
             # 讀取進度後可以繼續抓取
             self.can_resume = True
@@ -1162,6 +1164,62 @@ class SitemapApp:
         if files:
             latest = max(files, key=os.path.getmtime)
             self.label_sitemap.config(text=f"開啟 {latest}", foreground="blue")
+
+    def open_robots_url(self, event=None):
+        try:
+            import webbrowser
+            if self._robots_url:
+                webbrowser.open(self._robots_url)
+        except Exception:
+            pass
+
+    def update_robots_status(self, base_url: str):
+        from urllib.parse import urljoin
+        import requests
+        robots_url = urljoin(base_url, "/robots.txt")
+        self._robots_url = robots_url
+        try:
+            timeout_sec = 5
+            try:
+                # 若有設定中的 timeout，沿用
+                cfg = self._load_config()
+                timeout_sec = int(cfg.get("timeout", timeout_sec))
+            except Exception:
+                pass
+
+            resp = requests.get(robots_url, timeout=timeout_sec)
+            if resp.status_code >= 400:
+                self.label_robots.config(text="無法取得 (HTTP %d)" % resp.status_code, foreground="red")
+                return
+
+            text = resp.text or ""
+            self._robots_text = text
+
+            # 解析簡易摘要：記錄 user-agent 為 * 的 allow/disallow 條數
+            allow_cnt = 0
+            disallow_cnt = 0
+            current_ua = None
+            target_ua = "*"
+            for line in text.splitlines():
+                s = line.strip()
+                if not s or s.startswith('#'):
+                    continue
+                prefix = s.split(':', 1)[0].lower()
+                value = s.split(':', 1)[1].strip() if ':' in s else ''
+                if prefix == 'user-agent':
+                    current_ua = value
+                elif current_ua in (target_ua, None):
+                    if prefix == 'allow' and value:
+                        allow_cnt += 1
+                    elif prefix == 'disallow' and value:
+                        disallow_cnt += 1
+
+            self._robots_summary = {"allow": allow_cnt, "disallow": disallow_cnt}
+
+            # 顯示固定成功訊息（點擊仍可開啟 robots.txt）
+            self.label_robots.config(text="已排除收錄robots.txt阻擋清單", foreground="green")
+        except Exception as e:
+            self.label_robots.config(text=f"無法取得：{e}", foreground="red")
 
     def show_crawling_url(self, url):
         # 追加顯示目前爬網址 tip，最多保留30條

@@ -5,7 +5,10 @@ a = Analysis(
     ['sitemap_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('sitemap_generator.py', '.')],
+    datas=[
+        ('src/sitemap_generator.py', 'src'),
+        ('setup_rules/*', 'setup_rules'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
