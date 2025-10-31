@@ -24,6 +24,7 @@ SitemapGen is a tool for automated generation of website Sitemap.xml, supporting
 - **權重設定**：根據頁面類型自動設定適當的 priority 值
 - **進度保存**：支援中斷後續爬取，避免重複工作
 - **GUI 介面**：提供友善的圖形化操作介面
+- **robots.txt 狀態顯示**：啟動爬蟲時即時檢查 robots.txt，顯示「已排除收錄robots.txt阻擋清單」，可點擊開啟 robots.txt 原始檔
 - **進度條動畫**：進度條以 Canvas 呈現，根據執行緒數顯示多個色塊，每個色塊獨立循環移動，動態反映多執行緒狀態
 - **批次處理**：支援大量網址的高效處理
 
@@ -183,6 +184,7 @@ python scripts/convert_progress_to_sitemap.py
 6. **監控進度**：觀察爬取進度和統計資訊
    - **本次統計**：顯示本次 session 新增的網址數量
    - **累積統計**：顯示總計的網址數量
+   - **robots.txt 狀態**：啟動時自動抓取 robots.txt，GUI 會顯示「已排除收錄robots.txt阻擋清單」，點擊可直接開啟 robots.txt 網址
 7. **停止爬取**：可隨時點擊「停止」按鈕中斷爬取
 8. **自動保存**：程式會每5秒自動保存進度到 `crawl_temp_YYYYmmdd_HHMMSS.pkl`
 9. **生成 Sitemap**：爬取完成後自動生成 `sitemap_YYYYmmdd_HHMMSS.xml`
@@ -201,6 +203,7 @@ python scripts/convert_progress_to_sitemap.py
 - **User-Agent**：設定請求標頭，模擬瀏覽器行為
 - **請求超時**：每個網頁請求的超時時間（秒）
 - **自動保存間隔**：自動保存進度的時間間隔（秒）
+ - （資訊）robots.txt 檢查：啟動時自動請求 `起始網址/robots.txt`，若可取得則狀態顯示為綠色並支援點擊開啟
 
 #### 3. 權重設定
 可調整各種頁面類型在 sitemap 中的 priority 權重（0.0 到 1.0）：
