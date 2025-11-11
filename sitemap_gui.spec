@@ -6,10 +6,10 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('src/sitemap_generator.py', 'src'),
-        ('setup_rules/*', 'setup_rules'),
+        ('src', 'src'),
+        ('setup_rules', 'setup_rules'),
     ],
-    hiddenimports=[],
+    hiddenimports=['tkinter', 'tkinter.ttk', 'pickle', 'requests', 'bs4'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -25,7 +25,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='sitemap_gui',
+    name='SitemapGen',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -38,4 +38,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=None,
 )

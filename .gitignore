@@ -1,9 +1,9 @@
+# Build directories and temporary files
 dist/
 build/
 __pycache__/
-*.spec
+
 # Python cache and compiled files
-__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -18,8 +18,12 @@ Thumbs.db
 # Environment and config
 .env
 *.env
-setup_rules/config.json
 
-# Output files
+# Output files - keep only final sitemaps in repository
 *.xml
+!autosave/sitemap.xml
 *.pkl
+*.pkl.bak
+
+# Auto-generated spec files (keep sitemap_gui.spec as template)
+SitemapGen*.spec

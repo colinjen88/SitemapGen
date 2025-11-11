@@ -815,28 +815,35 @@ class SitemapApp:
         except Exception:
             pass
 
-        # 啟動前自動備份現有進度檔（只保留最新的 3 個備份）
+        # 啟動前自動備份現有進度檔到 autosave 資料夾
         progress_file = self.progress_file
         if os.path.exists(progress_file):
             import shutil
             import glob
-            # 找出所有現有的備份檔
-            backup_files = sorted(glob.glob(f"{progress_file}.bak*"), key=os.path.getmtime)
-            # 只保留最新的 2 個，刪除更舊的
-            if len(backup_files) > 2:
-                for old_backup in backup_files[:-2]:
+            # 確保 autosave 資料夾存在
+            os.makedirs("autosave", exist_ok=True)
+            
+            # 取得進度檔名稱
+            progress_filename = os.path.basename(progress_file)
+            backup_file = os.path.join("autosave", f"{progress_filename}.bak")
+            
+            # 找出 autosave 資料夾中所有此進度檔的備份
+            backup_pattern = os.path.join("autosave", f"{progress_filename}.bak*")
+            backup_files = sorted(glob.glob(backup_pattern), key=os.path.getmtime)
+            
+            # 只保留最新的 1 個，刪除更舊的
+            if len(backup_files) > 1:
+                for old_backup in backup_files[:-1]:
                     try:
                         os.remove(old_backup)
                     except Exception:
                         pass
+            
             # 創建新備份
-            idx = 2
-            while True:
-                backup_file = f"{progress_file}.bak{idx}"
-                if not os.path.exists(backup_file):
-                    shutil.copyfile(progress_file, backup_file)
-                    break
-                idx += 1
+            try:
+                shutil.copyfile(progress_file, backup_file)
+            except Exception:
+                pass
 
         # 記錄本次啟動時的起始數據（用於計算本次統計）
         self.session_start_crawled = set(self.crawled_urls)

@@ -4,16 +4,16 @@
 SitemapGen is a tool for automated generation of website Sitemap.xml, supporting custom rules and batch processing for site management and SEO.
 
 
-# 最新專案狀態（2025/10/28）
+# 最新專案狀態（2025/11/11）
 
 - 已完成 sitemap 產生與主程式（sitemap_gui.py）測試，運作正常。
 - 專案目前未包含自動化測試檔案（如 test_*.py 或 *_test.py）。
 - 已新增 `.gitattributes`，強制 Python 與 Markdown 檔案使用 LF 換行格式，避免 Git 換行警告。
+- 備份檔案機制優化：進度檔備份自動儲存至 `autosave/` 資料夾，保持專案根目錄整潔。
 
 # Sitemap 生成器專案 (SEO工具)
 
 ## 專案簡介
-((這是寫給現在公司用的, 專屬客製化爬蟲工具))
 這是一個自動化網站爬蟲工具，專門用於生成符合 SEO 標準的 sitemap_YYYYmmdd_HHMMSS.xml 檔案。程式會自動爬取指定網站，依據預設規則篩選有效網址，並產生結構化的 sitemap 檔案。
 
 
@@ -30,8 +30,13 @@ SitemapGen is a tool for automated generation of website Sitemap.xml, supporting
 
 ## 檔案結構
 
+```
 SitemapGen/
 ├── sitemap_gui.py                  # 主程式（GUI 介面）
+├── build_exe.bat                   # 執行檔製作批次檔
+├── sitemap_gui.spec                # PyInstaller 設定檔
+├── dist/
+│   └── SitemapGen.exe              # 打包好的執行檔（約 16 MB）
 ├── src/
 │   ├── __init__.py
 │   └── sitemap_generator.py        # 核心爬蟲引擎
@@ -39,10 +44,7 @@ SitemapGen/
 │   ├── convert_progress_to_sitemap.py      # 進度轉換腳本
 │   └── convert_progress_to_sitemap_ok.py   # 進度轉換腳本（已驗證）
 ├── tools/
-│   ├── remove_page1.py             # 移除 page=1 參數的工具
-│   ├── sitemap_gui.spec            # PyInstaller 打包設定檔
-│   └── build/
-│       └── sitemap_gui/            # 編譯產物
+│   └── remove_page1.py             # 移除 page=1 參數的工具
 ├── Custom-made/
 │   ├── SITEMAP_RULES.md            # 規則說明與預設網址
 │   └── URL_RULES.md                # 網址收錄規則細節
@@ -56,74 +58,42 @@ SitemapGen/
 │   ├── config.json                 # 客製化設定檔
 │   └── config.py
 ├── autosave/
-│   └── sitemap_YYYYmmdd_HHMMSS.xml # 自動產生的 sitemap 檔案
-├── output/
-│   └── here_you_are/
-│       └── sitemap_YYYYmmdd_HHMMSS.xml     # 歷史產出檔案
-├── crawl_temp_YYYYmmdd_HHMMSS.pkl         # 進度暫存檔（每次啟動自動命名）
-└── README.md                       # 本說明文件
-```
-
-```
-SitemapGen/
-├── sitemap_gui.py                  # 主程式（GUI 介面）
-├── src/
-│   ├── __init__.py
-│   └── sitemap_generator.py        # 核心爬蟲引擎
-├── scripts/
-│   ├── convert_progress_to_sitemap.py      # 進度轉換腳本
-│   └── convert_progress_to_sitemap_ok.py   # 進度轉換腳本（已驗證）
-├── tools/
-│   ├── remove_page1.py             # 移除 page=1 參數的工具
-│   ├── sitemap_gui.spec            # PyInstaller 打包設定檔
-│   └── build/
-│       └── sitemap_gui/            # 編譯產物
-├── Custom-made/
-│   ├── SITEMAP_RULES.md            # 規則說明與預設網址
-│   └── URL_RULES.md                # 網址收錄規則細節
-├── docs/
-│   ├── 快速使用說明.md
-│   ├── OPTIMIZATION_SUMMARY.md
-│   ├── SITEMAP_RULES.md
-│   ├── SEO排除收錄規則與網址列表.md
-│   └── 修正紀錄_SitemapGen_GUI啟動錯誤.md
-├── setup_rules/
-│   ├── config.json                 # 客製化設定檔
-│   └── config.py
-├── autosave/
-│   ├── sitemap_YYYYmmdd_HHMMSS.xml # 自動產生的 sitemap 檔案
-│   └── sitemap.xml                 # 暫存檔案，每次爬蟲結束自動覆蓋，僅供快速檢查
-├── output/
-│   └── here_you_are/
-│       └── sitemap_YYYYmmdd_HHMMSS.xml     # 歷史產出檔案
-├── crawl_temp_YYYYmmdd_HHMMSS.pkl         # 進度暫存檔（每次啟動自動命名）
+│   ├── sitemap.xml                 # 自動覆蓋的暫存檔案（僅供快速檢查）
+│   └── crawl_temp_*.pkl.bak        # 進度檔備份（自動產生）
+├── crawl_temp_YYYYmmdd_HHMMSS.pkl  # 進度暫存檔（每次啟動自動命名）
+├── sitemap-YYYYmmddHHMM.xml        # 產出的 sitemap 檔案（停止時產生）
 └── README.md                       # 本說明文件
 ```
 
 ## 檔案命名規則
 
 ### 進度檔案
-- **格式**：`crawl_temp_YYYYmmdd_HHMMSS.pkl`
-- **說明**：每次啟動程式時自動產生，避免覆蓋之前的進度
-- **範例**：`crawl_temp_20251029_140000.pkl`
-
+- **主檔案格式**：`crawl_temp_YYYYmmdd_HHMMSS.pkl`
+- **備份檔案格式**：`autosave/crawl_temp_YYYYmmdd_HHMMSS.pkl.bak`
+- **說明**：每次啟動程式時自動產生新的主檔案，避免覆蓋之前的進度；啟動爬蟲時自動將現有進度備份至 `autosave/` 資料夾
+- **範例**：
+  - 主檔：`crawl_temp_20251111_095808.pkl`
+  - 備份：`autosave/crawl_temp_20251111_095808.pkl.bak`
 
 ### Sitemap 檔案
-- **正式檔案格式**：`sitemap_YYYYmmdd_HHMMSS.xml`
-- **說明**：每次產生時自動命名，避免覆蓋之前的檔案
-- **範例**：`sitemap_20251029_153000.xml`
-- **暫存檔案**：`autosave/sitemap.xml`，每次爬蟲結束自動覆蓋，僅供快速檢查，不影響正式輸出
+- **格式**：`sitemap-YYYYmmddHHMM.xml`
+- **說明**：每次停止爬蟲或完成時自動產生，避免覆蓋之前的檔案
+- **範例**：`sitemap-202511111016.xml`
 
 ### 自動保存機制
-- **進度檔案**：每5秒自動保存到 `crawl_temp_YYYYmmdd_HHMMSS.pkl`
-- **Sitemap 檔案**：爬取完成後自動產生 `sitemap_YYYYmmdd_HHMMSS.xml`
+- **進度檔案**：爬蟲運作時每 5 秒自動保存到主進度檔
+- **備份檔案**：每次啟動爬蟲前自動備份至 `autosave/` 資料夾，只保留最新 1 個備份
+- **Sitemap 檔案**：
+  - 停止爬蟲時：立即產生帶時間戳的 sitemap
+  - 完成爬取時：自動產生帶時間戳的 sitemap
 
 
 ## 操作流程補充
-- **自動保存**：每次啟動自動產生新進度檔，並每5秒自動保存
-- **生成 Sitemap**：每次產生新檔案，檔名自動帶時間戳
+- **自動保存**：每次啟動自動產生新進度檔，爬蟲運作時每 5 秒自動保存
+- **備份機制**：啟動爬蟲前自動備份現有進度檔至 `autosave/` 資料夾，只保留最新 1 個備份
+- **生成 Sitemap**：停止或完成時自動產生新檔案，檔名自動帶時間戳（格式：`sitemap-YYYYmmddHHMM.xml`）
 - **進度條動畫**：啟動爬蟲後，進度條會根據所選執行緒數顯示多個色塊，每個色塊獨立循環移動，動態顯示多執行緒運作情形
-- **檔案管理**：所有檔案都採用時間戳命名，避免覆蓋，便於版本管理
+- **檔案管理**：所有進度檔都採用時間戳命名，避免覆蓋；備份檔統一存放在 `autosave/` 資料夾，便於版本管理
 
 ## 快速開始
 
@@ -135,25 +105,40 @@ SitemapGen/
   pip install requests beautifulsoup4 tkinter
   ```
 
-### 2. 設定起始網址
+### 2. 執行方式
 
-編輯 `src/sitemap_generator.py` 檔案，修改 `START_URL` 變數：
+#### 方法一：執行已打包的執行檔（推薦）
 
-```python
-START_URL = "https://your-website.com/"  # 改為您的網站首頁
-```
+直接執行 `dist/SitemapGen.exe`，無需安裝 Python 環境。
 
-### 3. 執行程式
+#### 方法二：使用 Python 執行 GUI 介面
 
-#### 方法一：使用 GUI 介面（推薦）
 ```bash
 python sitemap_gui.py
 ```
 
-#### 方法二：使用命令列
+#### 方法三：使用命令列
+
 ```bash
 python src/sitemap_generator.py
 ```
+
+### 3. 製作執行檔
+
+如需重新製作執行檔：
+
+```bash
+# 方法一：使用批次檔（推薦）
+build_exe.bat
+
+# 方法二：使用 PyInstaller 命令
+pyinstaller --onefile --noconsole --name SitemapGen sitemap_gui.py
+
+# 方法三：使用現有 spec 檔案
+pyinstaller --clean sitemap_gui.spec
+```
+
+執行檔會產生在 `dist/SitemapGen.exe`，大小約 16 MB。
 
 ### 4. 從進度檔案生成 Sitemap
 
@@ -289,6 +274,11 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
   - `urls_to_crawl`：待爬取的網址佇列
   - `rule1_count`、`rule2_count`、`rule3_count`：規則計數
   - **自動命名**：每次啟動程式時自動產生，避免覆蓋之前的進度
+  
+- `autosave/crawl_temp_YYYYmmdd_HHMMSS.pkl.bak`：備份檔案
+  - 每次啟動爬蟲前自動備份現有進度檔
+  - 只保留最新 1 個備份，自動刪除更舊的備份
+  - 存放在 `autosave/` 資料夾，保持專案根目錄整潔
 
 ### 網址收錄規則
 
@@ -330,8 +320,9 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 
 ### autosave/ 目錄
 
-- **自動保存目錄**：存放生成的 sitemap 檔案
-  - `sitemap_YYYYmmdd_HHMMSS.xml`：自動產生的 sitemap 檔案，包含完整的 URL 資料
+- **自動保存目錄**：存放備份檔案與暫存 sitemap
+  - `crawl_temp_*.pkl.bak`：進度檔備份，每次啟動爬蟲前自動產生
+  - `sitemap.xml`：自動覆蓋的暫存檔案（僅供快速檢查，可選）
 
 ## 進階功能
 
@@ -408,6 +399,13 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 - **v1.4**：重構檔案結構，提升可維護性
 - **v1.5**：修復功能問題，完善 GUI 功能實現
 - **v1.6**：實作時間戳檔案命名，避免檔案覆蓋，提升版本管理
+- **v2.11**（2025/11/11）：
+  - 優化備份機制：進度檔備份自動存放至 `autosave/` 資料夾
+  - 只保留最新 1 個備份檔，自動清理舊備份
+  - 改用固定 `.bak` 備份檔名，避免產生多個編號備份檔
+  - 提升專案根目錄整潔度
+  - **新增執行檔打包功能**：提供 `build_exe.bat` 批次檔，可快速建立獨立執行檔
+  - 執行檔大小約 16 MB，無需 Python 環境即可執行
 
 ## 授權資訊
 
