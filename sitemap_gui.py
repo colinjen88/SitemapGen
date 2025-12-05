@@ -854,6 +854,29 @@ class SitemapApp:
         except Exception:
             pass
 
+        # 檢查是否為全新爬取或不同網域
+        from urllib.parse import urlparse
+        current_domain = urlparse(start_url).netloc
+        previous_domain = ""
+        if self.crawled_urls:
+            # 取出一個已爬過的網址來判斷之前的網域
+            previous_domain = urlparse(next(iter(self.crawled_urls))).netloc
+        
+        # 如果不是繼續抓取 (can_resume=False) 或者網域不同，則重置狀態
+        if not self.can_resume or (previous_domain and current_domain != previous_domain):
+            print("偵測到新任務或不同網域，重置爬蟲狀態...")
+            self.crawled_urls = set()
+            self.valid_sitemap_urls = set()
+            self.to_crawl = set()
+            self.rule1_count = 0
+            self.rule2_count = 0
+            self.rule3_count = 0
+            self.url_referrers = {}
+            self.empty_pages_log = []
+            # 重新產生新的進度檔名 (避免覆蓋舊的)
+            self.progress_file = get_gui_progress_file()
+            self.update_progress_file_label()
+
         # 啟動前自動備份現有進度檔到 autosave 資料夾
         progress_file = self.progress_file
         if os.path.exists(progress_file):
@@ -927,8 +950,11 @@ class SitemapApp:
                 "url_referrers": self.url_referrers,
                 "empty_pages_log": self.empty_pages_log
             }
-            # 修正：傳入 initial_state
-            self.run_crawler(start_url, progress_callback, num_threads, lambda: self.is_running, initial_state=initial_state, crawling_url_callback=crawling_url_callback)
+            # 讀取當前設定
+            current_config = self._load_config()
+            
+            # 修正：傳入 initial_state 和 config
+            self.run_crawler(start_url, progress_callback, num_threads, lambda: self.is_running, initial_state=initial_state, crawling_url_callback=crawling_url_callback, config=current_config)
 
         t = threading.Thread(target=run_crawler_with_threads)
         self.threads = [t]

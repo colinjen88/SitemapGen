@@ -71,7 +71,7 @@ def save_empty_pages_report(empty_pages_log):
     except Exception as e:
         print(f"空頁面報告生成失敗: {e}")
 
-def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_func=None, initial_state=None, crawling_url_callback=None):
+def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_func=None, initial_state=None, crawling_url_callback=None, config=None):
     """
     爬取網站並即時回報進度，結束後自動產生 sitemap.xml
     """
@@ -247,12 +247,12 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
     print(f"商品頁: {rule1_count} 清單頁: {rule2_count} 其他頁: {rule3_count}")
     print(f"所有有效頁面總數: {rule1_count + rule2_count + rule3_count}")
     # --- 生成 sitemap.xml 檔案 ---
-    generate_xml_file(valid_sitemap_urls)
+    generate_xml_file(valid_sitemap_urls, config=config)
     # --- 生成空頁面報告 ---
     save_empty_pages_report(empty_pages_log)
     return crawled_urls, valid_sitemap_urls, urls_to_crawl
 
-def generate_xml_file(urls, output_filename=None):
+def generate_xml_file(urls, output_filename=None, config=None):
     """
     根據收集到的有效 URL 生成 sitemap.xml 檔案
     """
@@ -276,41 +276,26 @@ def generate_xml_file(urls, output_filename=None):
         urls -= homepage_variants
         urls.add(homepage)
 
-    # 明確排除頁面（根據 SEO 規則）
-    explicit_exclude = [
-        '/recover_product_detail.php',
-        '/keeping.php',
-        '/logout.php',
-        '/login.php',
-        '/register.php',
-        '/member.php',
-        '/order_query.php',
-        '/order_detail.php',
-        '/money_transfer.php',
-        '/vip_contract.php',
-        '/member_contract.php',
-        '/wholesaler_contract.php',
-    ]
+    # 讀取設定檔
+    cfg = config if config else {}
+    if not cfg:
+        try:
+            import json
+            if os.path.exists('setup_rules/config.json'):
+                with open('setup_rules/config.json', 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+        except Exception:
+            pass
+
+    # 讀取排除路徑 (不再使用 hardcoded explicit_exclude)
+    explicit_exclude = cfg.get('excluded_paths', []) or []
     urls = {u for u in urls if not any(p in u for p in explicit_exclude)}
 
     urls = apply_custom_rules(urls)
 
     # 讀取可選的 GUI 設定
-    exclude_nonstandard_index = True
-    enable_abnormal_filter = True
-    try:
-        import json
-        if os.path.exists('setup_rules/config.json'):
-            with open('setup_rules/config.json', 'r', encoding='utf-8') as f:
-                cfg = json.load(f)
-                exclude_nonstandard_index = cfg.get('exclude_nonstandard_index_path', True)
-                enable_abnormal_filter = cfg.get('enable_abnormal_query_filter', True)
-                # 合併 GUI 中自訂的 excluded_paths
-                extra_excluded = cfg.get('excluded_paths', []) or []
-                if extra_excluded:
-                    urls = {u for u in urls if not any(p in u for p in extra_excluded)}
-    except Exception:
-        pass
+    exclude_nonstandard_index = cfg.get('exclude_nonstandard_index_path', True)
+    enable_abnormal_filter = cfg.get('enable_abnormal_query_filter', True)
 
     # 依 SEO 規則進一步過濾：/index.php/ 與異常參數（可透過 GUI 開關）
     if exclude_nonstandard_index:
@@ -322,30 +307,75 @@ def generate_xml_file(urls, output_filename=None):
     xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
 
     url_list = sorted(list(urls), key=lambda x: (0 if x == homepage else 1, x))
+    
+    # 讀取權重設定
+    priorities = cfg.get('priorities', {})
+    
     from xml.sax.saxutils import escape
     for url in url_list:
-        # 權重規則
+        priority = '0.5' # 預設值
+        
         if url == homepage:
-            priority = '1.0'
-        elif '/product-detail.php' in url:
-            priority = '0.7'
-        elif url.endswith('/menu.php'):
-            priority = '0.9'
-        elif '/menu.php?' in url:
-            if 'page=' in url:
-                priority = '0.8'
-            else:
-                priority = '0.85'
-        elif url.endswith('/news.php') or url.endswith('/news-detail.php'):
-            priority = '0.9'
-        elif url.endswith('/about.php'):
-            priority = '0.8'
-        elif '/about.php?paction=186' in url:
-            priority = '0.9'
-        elif '/shopping_explanation.php' in url:
-            priority = '0.8'
+            priority = str(priorities.get('homepage', 1.0))
         else:
-            priority = '0.7'
+            # 嘗試匹配路徑關鍵字
+            matched = False
+            # 這裡需要一個靈活的匹配機制，目前先支援 config 中的 key 作為路徑部分匹配
+            # 例如: "product_detail": 0.7 -> if "product_detail" in url: priority = 0.7
+            # 但 config key 可能是 "product" 或 "product_detail"，需要一種對應方式
+            # 簡單實作：遍歷 priorities keys，若 key 在 url 中則使用該 priority
+            # 注意：這可能會誤判，例如 "news" 匹配 "newsletter"
+            
+            # 為了相容舊版 PM 站邏輯與新版通用邏輯，我們保留一些特定判斷，但優先使用 config
+            
+            # 1. 直接匹配 config 中的 key (如果 key 是路徑的一部分)
+            # 排序 keys 以確保長度長的先匹配 (避免 "news" 蓋過 "news-detail")
+            sorted_keys = sorted(priorities.keys(), key=len, reverse=True)
+            for key in sorted_keys:
+                if key == "homepage" or key == "default": continue
+                
+                # 特殊處理：PM 站的 key 是功能名稱而非路徑，需映射
+                # 但新版 config_default.json 的 key 是 "product", "category" 等，可直接當關鍵字
+                # 舊版 config_custom.json 的 key 是 "product_detail", "menu_no_params" 等
+                
+                # 嘗試直接匹配 key
+                if key in url:
+                    priority = str(priorities[key])
+                    matched = True
+                    break
+                
+                # 舊版 PM 站特定映射 (為了相容性)
+                if key == "product_detail" and "/product-detail.php" in url:
+                    priority = str(priorities[key])
+                    matched = True
+                    break
+                if key == "menu_no_params" and "/menu.php" in url and "?" not in url:
+                    priority = str(priorities[key])
+                    matched = True
+                    break
+                if key == "menu_with_params" and "/menu.php" in url and "?" in url and "page=" not in url:
+                    priority = str(priorities[key])
+                    matched = True
+                    break
+                if key == "menu_with_page" and "/menu.php" in url and "page=" in url:
+                    priority = str(priorities[key])
+                    matched = True
+                    break
+                if key == "news" and ("/news.php" in url or "/news-detail.php" in url):
+                    priority = str(priorities[key])
+                    matched = True
+                    break
+                if key == "about" and "/about.php" in url:
+                    priority = str(priorities[key])
+                    matched = True
+                    break
+                if key == "shopping_explanation" and "/shopping_explanation.php" in url:
+                    priority = str(priorities[key])
+                    matched = True
+                    break
+            
+            if not matched:
+                priority = str(priorities.get('default', 0.7))
 
         url_escaped = escape(url)
         xml_content += '  <url>\n'
