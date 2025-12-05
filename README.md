@@ -4,9 +4,11 @@
 SitemapGen is a tool for automated generation of website Sitemap.xml, supporting custom rules and batch processing for site management and SEO.
 
 
-# 最新專案狀態（2025/11/11）
+# 最新專案狀態（2025/12/05）
 
 - 已完成 sitemap 產生與主程式（sitemap_gui.py）測試，運作正常。
+- **新增**：空頁面報告功能，可追蹤空商品頁/空清單頁的來源連結。
+- **新增**：設定檔分離，支援通用設定與客製化設定切換。
 - 專案目前未包含自動化測試檔案（如 test_*.py 或 *_test.py）。
 - 已新增 `.gitattributes`，強制 Python 與 Markdown 檔案使用 LF 換行格式，避免 Git 換行警告。
 - 備份檔案機制優化：進度檔備份自動儲存至 `autosave/` 資料夾，保持專案根目錄整潔。
@@ -24,6 +26,8 @@ SitemapGen is a tool for automated generation of website Sitemap.xml, supporting
 - **權重設定**：根據頁面類型自動設定適當的 priority 值
 - **進度保存**：支援中斷後續爬取，避免重複工作
 - **GUI 介面**：提供友善的圖形化操作介面
+- **空頁面報告**：自動偵測並記錄空商品頁/空清單頁，包含來源連結追蹤，產生 CSV 報告
+- **設定檔切換**：支援通用設定與客製化設定快速切換
 - **robots.txt 狀態顯示**：啟動爬蟲時即時檢查 robots.txt，顯示「已排除收錄robots.txt阻擋清單」，可點擊開啟 robots.txt 原始檔
 - **進度條動畫**：進度條以 Canvas 呈現，根據執行緒數顯示多個色塊，每個色塊獨立循環移動，動態反映多執行緒狀態
 - **批次處理**：支援大量網址的高效處理
@@ -46,22 +50,26 @@ SitemapGen/
 ├── tools/
 │   └── remove_page1.py             # 移除 page=1 參數的工具
 ├── Custom-made/
-│   ├── SITEMAP_RULES.md            # 規則說明與預設網址
-│   └── URL_RULES.md                # 網址收錄規則細節
+│   └── SITEMAP_RULES.md            # 規則說明與預設設定參考
 ├── docs/
 │   ├── 快速使用說明.md
 │   ├── OPTIMIZATION_SUMMARY.md
 │   ├── SITEMAP_RULES.md
 │   ├── SEO排除收錄規則與網址列表.md
+│   ├── 網站遷移檢測專案規劃.md
 │   └── 修正紀錄_SitemapGen_GUI啟動錯誤.md
 ├── setup_rules/
-│   ├── config.json                 # 客製化設定檔
+│   ├── config.json                 # 目前使用的設定檔
+│   ├── config_default.json         # 通用預設設定
+│   ├── config_custom.json          # 客製化設定（專案特定）
 │   └── config.py
 ├── autosave/
 │   ├── sitemap.xml                 # 自動覆蓋的暫存檔案（僅供快速檢查）
 │   └── crawl_temp_*.pkl.bak        # 進度檔備份（自動產生）
 ├── crawl_temp_YYYYmmdd_HHMMSS.pkl  # 進度暫存檔（每次啟動自動命名）
 ├── sitemap-YYYYmmddHHMM.xml        # 產出的 sitemap 檔案（停止時產生）
+├── empty_pages_report_*.csv        # 空頁面報告（爬取結束時產生）
+├── TODO.md                         # 待辦事項與未來規劃
 └── README.md                       # 本說明文件
 ```
 
@@ -86,6 +94,7 @@ SitemapGen/
 - **Sitemap 檔案**：
   - 停止爬蟲時：立即產生帶時間戳的 sitemap
   - 完成爬取時：自動產生帶時間戳的 sitemap
+- **空頁面報告**：爬取結束時自動產生 `empty_pages_report_YYYYMMDD_HHMMSS.csv`，記錄空商品頁/空清單頁及其來源連結
 
 
 ## 操作流程補充
@@ -156,9 +165,10 @@ python scripts/convert_progress_to_sitemap.py
 
 1. **啟動程式**：執行 `python sitemap_gui.py`
 2. **設定參數**：
-   - 起始網址：預設為 `https://pm.shiny.com.tw/`
+   - 起始網址：預設為 `https://example.com/`
    - 執行緒數量：可調整並發爬取數量
 3. **客製化設定**：點擊「客製化設定」按鈕，可調整：
+   - **設定檔切換**：可勾選「啟用客製化設定」載入專案特定設定（如 `config_custom.json`）
    - **基本設定**：起始網址、執行緒數量、請求延遲、最大深度
    - **爬蟲設定**：User-Agent、請求超時、自動保存間隔
    - **權重設定**：各種頁面類型的 priority 權重
@@ -173,6 +183,7 @@ python scripts/convert_progress_to_sitemap.py
 7. **停止爬取**：可隨時點擊「停止」按鈕中斷爬取
 8. **自動保存**：程式會每5秒自動保存進度到 `crawl_temp_YYYYmmdd_HHMMSS.pkl`
 9. **生成 Sitemap**：爬取完成後自動生成 `sitemap_YYYYmmdd_HHMMSS.xml`
+10. **空頁面報告**：如有偵測到空商品頁或空清單頁，會自動生成 `empty_pages_report_*.csv`，記錄問題頁面及其來源連結
 
 ### 客製化設定說明
 
@@ -193,19 +204,19 @@ python scripts/convert_progress_to_sitemap.py
 #### 3. 權重設定
 可調整各種頁面類型在 sitemap 中的 priority 權重（0.0 到 1.0）：
 - 首頁（1.0）
-- 商品頁（0.7）
-- 清單頁（0.7-0.9）
-- 新聞頁（0.9）
-- 關於頁（0.8）
-- 其他頁面（0.7）
+- 商品頁（0.8）
+- 分類頁（0.8）
+- 文章頁（0.7）
+- 關於頁（0.6）
+- 其他頁面（0.5）
 
 #### 4. 排除規則
 可設定要排除的路徑，每行一個，例如：
 ```
-/login.php
-/member.php
-/register.php
-/admin.php
+/login
+/admin
+/cart
+/account
 ```
 
 #### 5. 自訂規則（正則表達式）
@@ -218,8 +229,8 @@ python scripts/convert_progress_to_sitemap.py
   - `include`：只保留匹配的 URL
 
 範例：
-- 排除 menu.php 的 page=1 參數：
-  - URL 必須包含：`/menu.php`
+- 排除 category 的 page=1 參數：
+  - URL 必須包含：`/category`
   - 正則表達式：`[\\?&]page=1($|&)`
   - 動作：`exclude`
 
@@ -245,8 +256,9 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 
 ### 進階設定
 
-- **自訂排除規則**：可編輯 `SitemapGen/Custom-made/URL_RULES.md`，調整收錄與排除條件。
-- **priority 權重調整**：同樣於 SitemapGen/Custom-made/URL_RULES.md 內調整各類型頁面權重。
+- **自訂排除規則與權重**：建議直接使用 GUI 的「客製化設定」功能進行調整。
+- **設定檔路徑**：所有設定會儲存於 `setup_rules/config.json`。
+- **參考規則**：預設規則可參考 `Custom-made/SITEMAP_RULES.md`。
 - **批次處理**：可多次執行、續爬，適合大型網站。
 
 ### 聯絡方式
@@ -284,24 +296,20 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
 
 #### 權重設定（Priority）
 - **首頁**：`1.0`
-- **商品頁**（含 `/product-detail.php`）：`0.7`
-- **清單頁**（含 `/menu.php`）：
-  - 無參數：`0.9`
-  - 有參數但無 `page=`：`0.85`
-  - 有 `page=` 參數：`0.8`
-- **新聞頁**（結尾 `/news.php` 或 `/news-detail.php`）：`0.9`
-- **關於頁**（結尾 `/about.php`）：`0.8`
-- **購物說明頁**（含 `/shopping_explanation.php`）：`0.8`
-- **其他頁面**：`0.7`
+- **商品頁**：`0.8`
+- **分類頁**：`0.8`
+- **文章頁**：`0.7`
+- **關於頁**：`0.6`
+- **其他頁面**：`0.5`
 
 #### 排除規則
 - 含以下路徑的網址不會收錄：
-  - `/login.php`
-  - `/member.php`
-  - `/register.php`
+  - `/login`
+  - `/admin`
+  - `/cart`
 - 只收錄同網域的網址
 - 自動去除重複網址
-- 清單頁若含 `page=1` 參數會被排除
+- 支援自訂參數過濾（如 `page=1`）
 
 ## 工具說明
 
@@ -406,6 +414,15 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
   - 提升專案根目錄整潔度
   - **新增執行檔打包功能**：提供 `build_exe.bat` 批次檔，可快速建立獨立執行檔
   - 執行檔大小約 16 MB，無需 Python 環境即可執行
+- **v2.12**（2025/12/05）：
+  - **新增空頁面報告**：自動偵測空商品頁/空清單頁，記錄來源連結（Referrer），產生 CSV 報告
+  - **設定檔分離**：新增 `config_default.json`（通用設定）與 `config_custom.json`（專案特定），支援一鍵切換
+  - GUI「客製化設定」新增「啟用客製化設定」勾選框
+  - 程式碼與文件改用中性預設值（`example.com`），提升通用性
+
+## 未來規劃 (Roadmap)
+
+預計開發 **SiteMigrationChecker**（網站遷移檢測工具），詳見 `docs/網站遷移檢測專案規劃.md` 與 `TODO.md`。
 
 ## 授權資訊
 

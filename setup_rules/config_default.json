@@ -1,0 +1,33 @@
+{
+    "start_url": "https://example.com/",
+    "max_workers": 3,
+    "request_delay": 0.1,
+    "max_depth": 10,
+    "timeout": 10,
+    "autosave_interval": 5,
+    "user_agent": "Mozilla/5.0 (Compatible; SitemapGenBot/1.0)",
+    "priorities": {
+        "homepage": 1.0,
+        "product": 0.8,
+        "category": 0.8,
+        "article": 0.7,
+        "about": 0.6,
+        "default": 0.5
+    },
+    "excluded_paths": [
+        "/login",
+        "/admin",
+        "/cart",
+        "/account"
+    ],
+    "exclude_nonstandard_index_path": true,
+    "enable_abnormal_query_filter": true,
+    "custom_rules": [
+        {
+            "name": "Sample Rule: Exclude page=1",
+            "url_contains": "/category",
+            "pattern": "[\\?&]page=1($|&)",
+            "action": "exclude"
+        }
+    ]
+}

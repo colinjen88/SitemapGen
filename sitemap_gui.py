@@ -41,6 +41,8 @@ class SitemapApp:
         self.session_start_rule1 = 0
         self.session_start_rule2 = 0
         self.session_start_rule3 = 0
+        self.url_referrers = {}
+        self.empty_pages_log = []
         self._gui_updater_id = None
         self._autosave_id = None
         # 標題
@@ -52,7 +54,7 @@ class SitemapApp:
         ttk.Label(frm_url, text="起始網址：", font=("Segoe UI", 12)).pack(side=tk.LEFT)
         self.entry_url = ttk.Entry(frm_url, width=52, font=("Segoe UI", 12))
         self.entry_url.pack(side=tk.LEFT, padx=5)
-        self.entry_url.insert(0, "https://pm.shiny.com.tw/")
+        self.entry_url.insert(0, "https://example.com/")
         # 執行緒數量 + 客製化設定在同一排
         frm_top = ttk.Frame(self.root)
         frm_top.pack(pady=5)
@@ -192,34 +194,24 @@ class SitemapApp:
         # 讀取當前設定
         current_config = self._load_config()
         
+        # 頂部開關區域
+        frm_switch = ttk.Frame(settings_window)
+        frm_switch.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.var_use_custom = tk.BooleanVar(value=False)
+        # 檢查是否與 custom config 相同，若相同則預設勾選 (簡單判斷)
+        # 這裡簡化處理，預設不勾選，使用者手動切換
+        
+        chk_custom = ttk.Checkbutton(frm_switch, text="啟用客製化設定 (Load Custom Config)", 
+                                     variable=self.var_use_custom,
+                                     command=lambda: self._on_profile_switch(notebook, current_config))
+        chk_custom.pack(side=tk.LEFT)
+        
         # 創建 Notebook (分頁標籤)
         notebook = ttk.Notebook(settings_window)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # === 基本設定頁面 ===
-        frame_basic = ttk.Frame(notebook)
-        notebook.add(frame_basic, text="基本設定")
-        self._create_basic_settings(frame_basic, current_config)
-        
-        # === 爬蟲設定頁面 ===
-        frame_crawler = ttk.Frame(notebook)
-        notebook.add(frame_crawler, text="爬蟲設定")
-        self._create_crawler_settings(frame_crawler, current_config)
-        
-        # === 權重設定頁面 ===
-        frame_priority = ttk.Frame(notebook)
-        notebook.add(frame_priority, text="權重設定")
-        self._create_priority_settings(frame_priority, current_config)
-        
-        # === 排除規則頁面 ===
-        frame_exclude = ttk.Frame(notebook)
-        notebook.add(frame_exclude, text="排除規則")
-        self._create_exclude_settings(frame_exclude, current_config)
-        
-        # === 自訂規則頁面 ===
-        frame_custom = ttk.Frame(notebook)
-        notebook.add(frame_custom, text="自訂規則")
-        self._create_custom_rules(frame_custom, current_config)
+        self._refresh_settings_widgets(notebook, current_config)
         
         # 按鈕區域
         btn_frame = ttk.Frame(settings_window)
@@ -236,13 +228,63 @@ class SitemapApp:
                               command=lambda: self._reset_to_defaults(settings_window, current_config, notebook))
         btn_reset.pack(side=tk.LEFT, padx=5)
     
+    def _on_profile_switch(self, notebook, config):
+        """切換設定檔"""
+        import json
+        target_file = "setup_rules/config_custom.json" if self.var_use_custom.get() else "setup_rules/config_default.json"
+        
+        if os.path.exists(target_file):
+            try:
+                with open(target_file, "r", encoding="utf-8") as f:
+                    new_data = json.load(f)
+                    # 更新 config 字典內容
+                    config.clear()
+                    config.update(new_data)
+                    # 重新整理介面
+                    self._refresh_settings_widgets(notebook, config)
+            except Exception as e:
+                messagebox.showerror("錯誤", f"載入設定檔失敗：{e}")
+        else:
+            messagebox.showwarning("警告", f"找不到設定檔：{target_file}")
+
+    def _refresh_settings_widgets(self, notebook, config):
+        """重新整理所有設定頁面"""
+        # 清除現有分頁
+        for tab in notebook.tabs():
+            notebook.forget(tab)
+        
+        # === 基本設定頁面 ===
+        frame_basic = ttk.Frame(notebook)
+        notebook.add(frame_basic, text="基本設定")
+        self._create_basic_settings(frame_basic, config)
+        
+        # === 爬蟲設定頁面 ===
+        frame_crawler = ttk.Frame(notebook)
+        notebook.add(frame_crawler, text="爬蟲設定")
+        self._create_crawler_settings(frame_crawler, config)
+        
+        # === 權重設定頁面 ===
+        frame_priority = ttk.Frame(notebook)
+        notebook.add(frame_priority, text="權重設定")
+        self._create_priority_settings(frame_priority, config)
+        
+        # === 排除規則頁面 ===
+        frame_exclude = ttk.Frame(notebook)
+        notebook.add(frame_exclude, text="排除規則")
+        self._create_exclude_settings(frame_exclude, config)
+        
+        # === 自訂規則頁面 ===
+        frame_custom = ttk.Frame(notebook)
+        notebook.add(frame_custom, text="自訂規則")
+        self._create_custom_rules(frame_custom, config)
+
     def _create_basic_settings(self, parent, config):
         """創建基本設定頁面"""
         # 起始網址
         ttk.Label(parent, text="起始網址：", font=("Segoe UI", 11)).grid(row=0, column=0, sticky=tk.W, padx=10, pady=10)
         entry_start_url = ttk.Entry(parent, width=50, font=("Segoe UI", 10))
         entry_start_url.grid(row=0, column=1, padx=10, pady=10)
-        entry_start_url.insert(0, config.get("start_url", "https://pm.shiny.com.tw/"))
+        entry_start_url.insert(0, config.get("start_url", "https://example.com/"))
         
         # 執行緒數量
         ttk.Label(parent, text="執行緒數量：", font=("Segoe UI", 11)).grid(row=1, column=0, sticky=tk.W, padx=10, pady=10)
@@ -604,35 +646,32 @@ class SitemapApp:
         """載入設定"""
         config_file = "setup_rules/config.json"
         default_config = {
-            "start_url": "https://pm.shiny.com.tw/",
+            "start_url": "https://example.com/",
             "max_workers": 3,
             "request_delay": 0.1,
             "max_depth": 10,
             "timeout": 10,
             "autosave_interval": 5,
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "user_agent": "Mozilla/5.0 (Compatible; SitemapGenBot/1.0)",
             "priorities": {
                 "homepage": 1.0,
-                "product_detail": 0.7,
-                "menu_no_params": 0.9,
-                "menu_with_params": 0.85,
-                "menu_with_page": 0.8,
-                "news": 0.9,
-                "about": 0.8,
-                "shopping_explanation": 0.8,
-                "default": 0.7
+                "product": 0.8,
+                "category": 0.8,
+                "article": 0.7,
+                "about": 0.6,
+                "default": 0.5
             },
             "excluded_paths": [
-                "/login.php",
-                "/member.php",
-                "/register.php",
-                "/admin.php"
+                "/login",
+                "/admin",
+                "/cart",
+                "/account"
             ],
             "custom_rules": [
                 {
-                    "name": "排除 menu.php 的 page=1",
+                    "name": "Sample Rule: Exclude page=1",
                     "pattern": r"[\?&]page=1($|&)",
-                    "url_contains": "/menu.php",
+                    "url_contains": "/category",
                     "action": "exclude"
                 }
             ]
@@ -723,7 +762,7 @@ class SitemapApp:
                     print(f"[autosave_progress] 新增 valid_sitemap_urls: {len(new_valid)} 筆")
             except Exception:
                 pass
-        self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count)
+        self.save_progress(self.crawled_urls, self.valid_sitemap_urls, self.to_crawl, self.rule1_count, self.rule2_count, self.rule3_count, self.url_referrers, self.empty_pages_log)
         if has_changes:
             print(f"[autosave_progress] 已儲存進度到 {progress_file}")
         interval = 5000 if self.is_running else 30000
@@ -866,6 +905,8 @@ class SitemapApp:
             self.rule1_count = data.get("rule1_count", 0)
             self.rule2_count = data.get("rule2_count", 0)
             self.rule3_count = data.get("rule3_count", 0)
+            self.url_referrers = data.get("url_referrers", {})
+            self.empty_pages_log = data.get("empty_pages_log", [])
 
         def crawling_url_callback(url):
             self.show_crawling_url(url)
@@ -883,6 +924,8 @@ class SitemapApp:
                 "rule1_count": self.rule1_count,
                 "rule2_count": self.rule2_count,
                 "rule3_count": self.rule3_count,
+                "url_referrers": self.url_referrers,
+                "empty_pages_log": self.empty_pages_log
             }
             # 修正：傳入 initial_state
             self.run_crawler(start_url, progress_callback, num_threads, lambda: self.is_running, initial_state=initial_state, crawling_url_callback=crawling_url_callback)
@@ -914,6 +957,12 @@ class SitemapApp:
             # 顯示 sitemap 連結
             try:
                 self.show_sitemap_link()
+            except Exception:
+                pass
+            # 產出空頁面報告
+            try:
+                from src.sitemap_generator import save_empty_pages_report
+                save_empty_pages_report(self.empty_pages_log)
             except Exception:
                 pass
 
@@ -959,6 +1008,8 @@ class SitemapApp:
             self.rule1_count = data.get("rule1_count", 0)
             self.rule2_count = data.get("rule2_count", 0)
             self.rule3_count = data.get("rule3_count", 0)
+            self.url_referrers = data.get("url_referrers", {})
+            self.empty_pages_log = data.get("empty_pages_log", [])
             # 記錄本次 session 的起始數據
             self.session_start_crawled = set(self.crawled_urls)
             self.session_start_valid = set(self.valid_sitemap_urls)
@@ -1110,8 +1161,7 @@ class SitemapApp:
             # 新增待爬網址
             to_crawl.update(links - crawled_urls)
             depth += 1
-
-    def save_progress(self, crawled_urls, valid_sitemap_urls, to_crawl, rule1_count=0, rule2_count=0, rule3_count=0):
+    def save_progress(self, crawled_urls, valid_sitemap_urls, to_crawl, rule1_count=0, rule2_count=0, rule3_count=0, url_referrers=None, empty_pages_log=None):
         progress_file = self.progress_file
         
         # 直接使用當前記憶體中的資料作為最新狀態，這才是正確的合併邏輯
@@ -1121,7 +1171,9 @@ class SitemapApp:
             "urls_to_crawl": set(to_crawl),
             "rule1_count": rule1_count,
             "rule2_count": rule2_count,
-            "rule3_count": rule3_count
+            "rule3_count": rule3_count,
+            "url_referrers": url_referrers or {},
+            "empty_pages_log": empty_pages_log or []
         }
 
         if os.path.exists(progress_file):

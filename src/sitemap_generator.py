@@ -48,6 +48,29 @@ def create_sitemap(valid_sitemap_urls, output_filename=None):
     except Exception as e:
         print(f"Sitemap 檔案更新失敗: {e}")
 
+def save_empty_pages_report(empty_pages_log):
+    """
+    將空頁面記錄儲存為 CSV 報告
+    """
+    if not empty_pages_log:
+        return
+    
+    filename = f"empty_pages_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    try:
+        with open(filename, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["發現時間", "頁面類型", "問題頁面 URL", "來源頁面 (Referrer)"])
+            for log in empty_pages_log:
+                writer.writerow([
+                    log.get("timestamp", ""),
+                    log.get("type", ""),
+                    log.get("url", ""),
+                    log.get("referrer", "")
+                ])
+        print(f"--- 空頁面報告已生成: {filename} ---")
+    except Exception as e:
+        print(f"空頁面報告生成失敗: {e}")
+
 def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_func=None, initial_state=None, crawling_url_callback=None):
     """
     爬取網站並即時回報進度，結束後自動產生 sitemap.xml
@@ -63,6 +86,8 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
         rule1_count = initial_state.get("rule1_count", 0)
         rule2_count = initial_state.get("rule2_count", 0)
         rule3_count = initial_state.get("rule3_count", 0)
+        url_referrers = initial_state.get("url_referrers", {start_url: None})
+        empty_pages_log = initial_state.get("empty_pages_log", [])
     else:
         urls_to_crawl = set([start_url])
         crawled_urls = set()
@@ -70,6 +95,8 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
         rule1_count = 0
         rule2_count = 0
         rule3_count = 0
+        url_referrers = {start_url: None}
+        empty_pages_log = []
     lock = threading.Lock()
 
     def crawl_url(current_url):
@@ -81,6 +108,7 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
             if current_url in crawled_urls:
                 return [], None
             crawled_urls.add(current_url)
+            referrer = url_referrers.get(current_url, "Unknown")
         print(f"正在分析: {current_url}")
         new_links = []
         is_valid_page = False
@@ -107,6 +135,13 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                     print("  -> [規則1] 商品頁驗證通過 (商品名稱存在)")
                 else:
                     print("  -> [規則1] 商品頁驗證失敗 (商品名稱為空)")
+                    with lock:
+                        empty_pages_log.append({
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "type": "空商品頁",
+                            "url": current_url,
+                            "referrer": referrer
+                        })
             elif '/menu.php' in current_url:
                 breadcrumb = soup.find('nav', class_='breadcrumb')
                 if breadcrumb:
@@ -119,6 +154,13 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                             print("  -> [規則2] 清單頁驗證通過 (列表有內容)")
                         else:
                             print("  -> [規則2] 清單頁驗證失敗 (列表為空)")
+                            with lock:
+                                empty_pages_log.append({
+                                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "type": "空清單頁",
+                                    "url": current_url,
+                                    "referrer": referrer
+                                })
                     else:
                         is_valid_page = True
                         with lock:
@@ -173,6 +215,8 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                     with lock:
                         if link not in crawled_urls:
                             urls_to_crawl.add(link)
+                            if link not in url_referrers:
+                                url_referrers[link] = finished_url
                 # 即時回報進度
                 if progress_callback:
                     progress_callback({
@@ -181,7 +225,9 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                         "urls_to_crawl": set(urls_to_crawl),
                         "rule1_count": rule1_count,
                         "rule2_count": rule2_count,
-                        "rule3_count": rule3_count
+                        "rule3_count": rule3_count,
+                        "url_referrers": url_referrers,
+                        "empty_pages_log": empty_pages_log
                     })
     # 最後一次回報
     if progress_callback:
@@ -191,7 +237,9 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
             "urls_to_crawl": set(urls_to_crawl),
             "rule1_count": rule1_count,
             "rule2_count": rule2_count,
-            "rule3_count": rule3_count
+            "rule3_count": rule3_count,
+            "url_referrers": url_referrers,
+            "empty_pages_log": empty_pages_log
         })
     print("\n--- 爬取完成 ---")
     print(f"總共掃描 {len(crawled_urls)} 個網址")
@@ -200,6 +248,8 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
     print(f"所有有效頁面總數: {rule1_count + rule2_count + rule3_count}")
     # --- 生成 sitemap.xml 檔案 ---
     generate_xml_file(valid_sitemap_urls)
+    # --- 生成空頁面報告 ---
+    save_empty_pages_report(empty_pages_log)
     return crawled_urls, valid_sitemap_urls, urls_to_crawl
 
 def generate_xml_file(urls, output_filename=None):
