@@ -143,34 +143,70 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                             "referrer": referrer
                         })
             elif '/menu.php' in current_url:
+                # 新版判斷邏輯：依據規格書實作
+                is_empty_list = False
+                empty_reason = ""
+                
+                # 1. 找到唯一的 breadcrumb
                 breadcrumb = soup.find('nav', class_='breadcrumb')
-                if breadcrumb:
-                    row_div = breadcrumb.find_next_sibling('div', class_='row')
-                    if row_div:
-                        if row_div.get_text(strip=True):
-                            is_valid_page = True
-                            with lock:
-                                rule2_count += 1
-                            print("  -> [規則2] 清單頁驗證通過 (列表有內容)")
-                        else:
-                            print("  -> [規則2] 清單頁驗證失敗 (列表為空)")
-                            with lock:
-                                empty_pages_log.append({
-                                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                    "type": "空清單頁",
-                                    "url": current_url,
-                                    "referrer": referrer
-                                })
-                    else:
-                        is_valid_page = True
-                        with lock:
-                            rule2_count += 1
-                        print("  -> [規則2] 找不到 div.row，預設為有效頁面")
-                else:
+                if not breadcrumb:
+                    # 找不到 breadcrumb，預設為有效頁面
                     is_valid_page = True
                     with lock:
                         rule2_count += 1
                     print("  -> [規則2] 找不到 breadcrumb，預設為有效頁面")
+                else:
+                    # 2. 找到 breadcrumb 後的第一個 div.row (商品列表容器)
+                    row_div = breadcrumb.find_next('div', class_='row')
+                    if not row_div:
+                        # 找不到商品列表容器，預設為有效頁面
+                        is_valid_page = True
+                        with lock:
+                            rule2_count += 1
+                        print("  -> [規則2] 找不到商品列表容器 div.row，預設為有效頁面")
+                    else:
+                        # 3. 檢查商品相關元素
+                        product_links = row_div.select('a[href*="product-detail.php"]')
+                        cards = row_div.select('.card')
+                        
+                        if product_links or cards:
+                            # 發現商品相關元素，為有效頁面
+                            is_valid_page = True
+                            with lock:
+                                rule2_count += 1
+                            print(f"  -> [規則2] 清單頁驗證通過 (發現 {len(product_links)} 個商品連結, {len(cards)} 個卡片)")
+                        else:
+                            # 4. 檢查 innerText 是否為空
+                            inner_text = row_div.get_text(strip=True)
+                            if inner_text:
+                                # 商品列表容器有內容
+                                is_valid_page = True
+                                with lock:
+                                    rule2_count += 1
+                                print(f"  -> [規則2] 清單頁驗證通過 (列表有內容: {inner_text[:30]}...)")
+                            else:
+                                # 5. 檢查分頁資訊
+                                import re
+                                page_text = soup.get_text()
+                                pagination_pattern = r'0-0/0'
+                                
+                                if re.search(pagination_pattern, page_text):
+                                    is_empty_list = True
+                                    empty_reason = "分頁顯示 0-0/0，且列表為空"
+                                else:
+                                    # 列表為空但無分頁確認，仍視為空列表
+                                    is_empty_list = True
+                                    empty_reason = "商品列表容器為空"
+                                
+                                if is_empty_list:
+                                    print(f"  -> [規則2] 清單頁驗證失敗 ({empty_reason})")
+                                    with lock:
+                                        empty_pages_log.append({
+                                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                            "type": "空清單頁",
+                                            "url": current_url,
+                                            "referrer": referrer
+                                        })
             else:
                 is_valid_page = True
                 with lock:
