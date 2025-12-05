@@ -121,36 +121,50 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                 print(f"  -> 狀態碼異常: {response.status_code}, 跳過此頁面")
                 return [], None
             soup = BeautifulSoup(response.content, 'html.parser')
-            if '/product-detail.php' in current_url:
+            # 讀取空頁面偵測設定
+            empty_page_config = config.get('empty_page_detection', {})
+            
+            # 1. 商品詳細頁判斷
+            p_cfg = empty_page_config.get('product_detail', {
+                "url_pattern": "/product-detail.php",
+                "breadcrumb_selector": ".breadcrumb",
+                "container_selector": "div.row",
+                "title_selector": ".product-title"
+            })
+            
+            if p_cfg['url_pattern'] in current_url:
                 # 新版判斷邏輯：從 breadcrumb 後的 row 找 .product-title
-                breadcrumb = soup.find(class_='breadcrumb')
+                breadcrumb = soup.select_one(p_cfg['breadcrumb_selector'])
                 if not breadcrumb:
                     # 找不到 breadcrumb，預設為有效頁面
                     is_valid_page = True
                     with lock:
                         rule1_count += 1
-                    print("  -> [規則1] 找不到 breadcrumb，預設為有效頁面")
+                    print(f"  -> [規則1] 找不到 {p_cfg['breadcrumb_selector']}，預設為有效頁面")
                 else:
-                    # 找到 breadcrumb 後的第一個 .row
-                    row_div = breadcrumb.find_next('div', class_='row')
+                    # 找到 breadcrumb 後的第一個容器 (如 div.row)
+                    # 從 container_selector 解析出 class 名稱 (例如 "div.row" -> "row")
+                    container_cls = p_cfg['container_selector'].replace('div.', '').replace('.', '')
+                    row_div = breadcrumb.find_next('div', class_=container_cls)
+                    
                     if not row_div:
                         is_valid_page = True
                         with lock:
                             rule1_count += 1
-                        print("  -> [規則1] 找不到 .row，預設為有效頁面")
+                        print(f"  -> [規則1] 找不到 {p_cfg['container_selector']}，預設為有效頁面")
                     else:
                         # 在 row 內找 .product-title
-                        product_title = row_div.select_one('.product-title')
+                        product_title = row_div.select_one(p_cfg['title_selector'])
                         if product_title:
                             title_text = product_title.get_text(strip=True)
                             if title_text:
                                 is_valid_page = True
                                 with lock:
                                     rule1_count += 1
-                                print(f"  -> [規則1] 商品頁驗證通過 (商品名稱: {title_text[:30]}...)")
+                                print(f"  -> [規則1] 商品頁驗證通過 (標題: {title_text[:30]}...)")
                             else:
                                 # .product-title 存在但內容為空
-                                print("  -> [規則1] 商品頁驗證失敗 (.product-title 為空)")
+                                print(f"  -> [規則1] 商品頁驗證失敗 ({p_cfg['title_selector']} 為空)")
                                 with lock:
                                     empty_pages_log.append({
                                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -160,7 +174,7 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                                     })
                         else:
                             # 找不到 .product-title，視為空商品頁
-                            print("  -> [規則1] 商品頁驗證失敗 (找不到 .product-title)")
+                            print(f"  -> [規則1] 商品頁驗證失敗 (找不到 {p_cfg['title_selector']})")
                             with lock:
                                 empty_pages_log.append({
                                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -168,76 +182,90 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                                     "url": current_url,
                                     "referrer": referrer
                                 })
-            elif '/menu.php' in current_url:
-                # 新版判斷邏輯：依據規格書實作
-                is_empty_list = False
-                empty_reason = ""
+
+            # 2. 商品列表頁判斷
+            elif True: # 使用 elif True 配合內部判斷，避免變數 scope 問題
+                l_cfg = empty_page_config.get('product_list', {
+                    "url_pattern": "/menu.php",
+                    "breadcrumb_selector": "nav.breadcrumb",
+                    "container_selector": "div.row",
+                    "product_link_selector": "a[href*='product-detail.php']",
+                    "card_selector": ".card",
+                    "pagination_empty_pattern": "0-0/0"
+                })
                 
-                # 1. 找到唯一的 breadcrumb
-                breadcrumb = soup.find('nav', class_='breadcrumb')
-                if not breadcrumb:
-                    # 找不到 breadcrumb，預設為有效頁面
-                    is_valid_page = True
-                    with lock:
-                        rule2_count += 1
-                    print("  -> [規則2] 找不到 breadcrumb，預設為有效頁面")
-                else:
-                    # 2. 找到 breadcrumb 後的第一個 div.row (商品列表容器)
-                    row_div = breadcrumb.find_next('div', class_='row')
-                    if not row_div:
-                        # 找不到商品列表容器，預設為有效頁面
+                if l_cfg['url_pattern'] in current_url:
+                    # 新版判斷邏輯：依據規格書實作
+                    is_empty_list = False
+                    empty_reason = ""
+                    
+                    # 1. 找到唯一的 breadcrumb
+                    breadcrumb = soup.select_one(l_cfg['breadcrumb_selector'])
+                    if not breadcrumb:
+                        # 找不到 breadcrumb，預設為有效頁面
                         is_valid_page = True
                         with lock:
                             rule2_count += 1
-                        print("  -> [規則2] 找不到商品列表容器 div.row，預設為有效頁面")
+                        print(f"  -> [規則2] 找不到 {l_cfg['breadcrumb_selector']}，預設為有效頁面")
                     else:
-                        # 3. 檢查商品相關元素
-                        product_links = row_div.select('a[href*="product-detail.php"]')
-                        cards = row_div.select('.card')
+                        # 2. 找到 breadcrumb 後的第一個 div.row (商品列表容器)
+                        container_cls = l_cfg['container_selector'].replace('div.', '').replace('.', '')
+                        row_div = breadcrumb.find_next('div', class_=container_cls)
                         
-                        if product_links or cards:
-                            # 發現商品相關元素，為有效頁面
+                        if not row_div:
+                            # 找不到商品列表容器，預設為有效頁面
                             is_valid_page = True
                             with lock:
                                 rule2_count += 1
-                            print(f"  -> [規則2] 清單頁驗證通過 (發現 {len(product_links)} 個商品連結, {len(cards)} 個卡片)")
+                            print(f"  -> [規則2] 找不到商品列表容器 {l_cfg['container_selector']}，預設為有效頁面")
                         else:
-                            # 4. 檢查 innerText 是否為空
-                            inner_text = row_div.get_text(strip=True)
-                            if inner_text:
-                                # 商品列表容器有內容
+                            # 3. 檢查商品相關元素
+                            product_links = row_div.select(l_cfg['product_link_selector'])
+                            cards = row_div.select(l_cfg['card_selector'])
+                            
+                            if product_links or cards:
+                                # 發現商品相關元素，為有效頁面
                                 is_valid_page = True
                                 with lock:
                                     rule2_count += 1
-                                print(f"  -> [規則2] 清單頁驗證通過 (列表有內容: {inner_text[:30]}...)")
+                                print(f"  -> [規則2] 清單頁驗證通過 (發現 {len(product_links)} 個商品連結, {len(cards)} 個卡片)")
                             else:
-                                # 5. 檢查分頁資訊
-                                import re
-                                page_text = soup.get_text()
-                                pagination_pattern = r'0-0/0'
-                                
-                                if re.search(pagination_pattern, page_text):
-                                    is_empty_list = True
-                                    empty_reason = "分頁顯示 0-0/0，且列表為空"
-                                else:
-                                    # 列表為空但無分頁確認，仍視為空列表
-                                    is_empty_list = True
-                                    empty_reason = "商品列表容器為空"
-                                
-                                if is_empty_list:
-                                    print(f"  -> [規則2] 清單頁驗證失敗 ({empty_reason})")
+                                # 4. 檢查 innerText 是否為空
+                                inner_text = row_div.get_text(strip=True)
+                                if inner_text:
+                                    # 商品列表容器有內容
+                                    is_valid_page = True
                                     with lock:
-                                        empty_pages_log.append({
-                                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                            "type": "空清單頁",
-                                            "url": current_url,
-                                            "referrer": referrer
-                                        })
-            else:
-                is_valid_page = True
-                with lock:
-                    rule3_count += 1
-                print("  -> [規則3] 其他頁面，預設為有效")
+                                        rule2_count += 1
+                                    print(f"  -> [規則2] 清單頁驗證通過 (列表有內容: {inner_text[:30]}...)")
+                                else:
+                                    # 5. 檢查分頁資訊
+                                    import re
+                                    page_text = soup.get_text()
+                                    pagination_pattern = l_cfg['pagination_empty_pattern']
+                                    
+                                    if re.search(pagination_pattern, page_text):
+                                        is_empty_list = True
+                                        empty_reason = f"分頁顯示 {pagination_pattern}，且列表為空"
+                                    else:
+                                        # 列表為空但無分頁確認，仍視為空列表
+                                        is_empty_list = True
+                                        empty_reason = "商品列表容器為空"
+                                    
+                                    if is_empty_list:
+                                        print(f"  -> [規則2] 清單頁驗證失敗 ({empty_reason})")
+                                        with lock:
+                                            empty_pages_log.append({
+                                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                                "type": "空清單頁",
+                                                "url": current_url,
+                                                "referrer": referrer
+                                            })
+                else:
+                    is_valid_page = True
+                    with lock:
+                        rule3_count += 1
+                    print("  -> [規則3] 其他頁面，預設為有效")
             if is_valid_page:
                 with lock:
                     valid_sitemap_urls.add(current_url)

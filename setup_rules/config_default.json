@@ -22,6 +22,22 @@
     ],
     "exclude_nonstandard_index_path": true,
     "enable_abnormal_query_filter": true,
+    "empty_page_detection": {
+        "product_detail": {
+            "url_pattern": "/product-detail.php",
+            "breadcrumb_selector": ".breadcrumb",
+            "container_selector": "div.row",
+            "title_selector": ".product-title"
+        },
+        "product_list": {
+            "url_pattern": "/menu.php",
+            "breadcrumb_selector": "nav.breadcrumb",
+            "container_selector": "div.row",
+            "product_link_selector": "a[href*='product-detail.php']",
+            "card_selector": ".card",
+            "pagination_empty_pattern": "0-0/0"
+        }
+    },
     "custom_rules": [
         {
             "name": "Sample Rule: Exclude page=1",
