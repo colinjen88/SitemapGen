@@ -429,6 +429,9 @@ A: 請檢查 SitemapGen/Custom-made/URL_RULES.md，確認網址是否被排除�
     - 檢查商品相關元素（product-detail.php 連結、.card 卡片）
     - 檢查分頁資訊（0-0/0 模式）
   - 更精確判斷商品列表頁是否為空
+- **v2.15**（2025/12/05）：
+  - **統一判斷邏輯**：空商品頁改用 `.breadcrumb → .row → .product-title` 判斷
+  - **新增規格書**：`docs/空頁面偵測邏輯規格書.md`，可供其他專案參考
 
 ## 未來規劃 (Roadmap)
 

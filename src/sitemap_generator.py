@@ -122,26 +122,52 @@ def run_crawler(start_url, progress_callback=None, num_threads=3, is_running_fun
                 return [], None
             soup = BeautifulSoup(response.content, 'html.parser')
             if '/product-detail.php' in current_url:
-                product_name_element = soup.find(id="product_name")
-                if product_name_element and product_name_element.get('value', '').strip():
+                # 新版判斷邏輯：從 breadcrumb 後的 row 找 .product-title
+                breadcrumb = soup.find(class_='breadcrumb')
+                if not breadcrumb:
+                    # 找不到 breadcrumb，預設為有效頁面
                     is_valid_page = True
                     with lock:
                         rule1_count += 1
-                    print("  -> [規則1] 商品頁驗證通過 (商品名稱存在)")
-                elif product_name_element and product_name_element.get_text(strip=True):
-                    is_valid_page = True
-                    with lock:
-                        rule1_count += 1
-                    print("  -> [規則1] 商品頁驗證通過 (商品名稱存在)")
+                    print("  -> [規則1] 找不到 breadcrumb，預設為有效頁面")
                 else:
-                    print("  -> [規則1] 商品頁驗證失敗 (商品名稱為空)")
-                    with lock:
-                        empty_pages_log.append({
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "type": "空商品頁",
-                            "url": current_url,
-                            "referrer": referrer
-                        })
+                    # 找到 breadcrumb 後的第一個 .row
+                    row_div = breadcrumb.find_next('div', class_='row')
+                    if not row_div:
+                        is_valid_page = True
+                        with lock:
+                            rule1_count += 1
+                        print("  -> [規則1] 找不到 .row，預設為有效頁面")
+                    else:
+                        # 在 row 內找 .product-title
+                        product_title = row_div.select_one('.product-title')
+                        if product_title:
+                            title_text = product_title.get_text(strip=True)
+                            if title_text:
+                                is_valid_page = True
+                                with lock:
+                                    rule1_count += 1
+                                print(f"  -> [規則1] 商品頁驗證通過 (商品名稱: {title_text[:30]}...)")
+                            else:
+                                # .product-title 存在但內容為空
+                                print("  -> [規則1] 商品頁驗證失敗 (.product-title 為空)")
+                                with lock:
+                                    empty_pages_log.append({
+                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                        "type": "空商品頁",
+                                        "url": current_url,
+                                        "referrer": referrer
+                                    })
+                        else:
+                            # 找不到 .product-title，視為空商品頁
+                            print("  -> [規則1] 商品頁驗證失敗 (找不到 .product-title)")
+                            with lock:
+                                empty_pages_log.append({
+                                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "type": "空商品頁",
+                                    "url": current_url,
+                                    "referrer": referrer
+                                })
             elif '/menu.php' in current_url:
                 # 新版判斷邏輯：依據規格書實作
                 is_empty_list = False
